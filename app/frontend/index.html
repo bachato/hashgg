@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HashGG</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>HashGG</h1>
+      <p class="subtitle">Sovereign hash routing</p>
+    </header>
+
+    <!-- Setup Screen -->
+    <div id="screen-setup" class="screen" style="display:none;">
+      <h2>Connect to playit.gg</h2>
+      <p>HashGG uses <a href="https://playit.gg" target="_blank" rel="noopener">playit.gg</a> to tunnel your Datum Gateway stratum port to the public internet. No port forwarding or static IP required.</p>
+
+      <div class="premium-notice">
+        <strong>⚡ playit.gg Premium required</strong> (~$3/month)<br>
+        Free accounts only support game-specific tunnels that block mining traffic. <a href="https://playit.gg/account/premium" target="_blank" rel="noopener">Upgrade to Premium</a> for raw TCP tunnels before starting setup.
+      </div>
+
+      <div class="actions">
+        <button id="btn-start-claim" class="btn btn-primary">Start Setup</button>
+      </div>
+
+      <div class="divider"><span>or</span></div>
+
+      <details id="manual-key">
+        <summary>Enter a secret key manually</summary>
+        <div class="manual-input">
+          <input type="text" id="input-secret" placeholder="Paste your playit.gg secret key (hex)" autocomplete="off" spellcheck="false">
+          <button id="btn-submit-secret" class="btn btn-secondary">Connect</button>
+        </div>
+        <p class="hint">You can get a secret key from the <a href="https://playit.gg/account" target="_blank" rel="noopener">playit.gg dashboard</a>.</p>
+      </details>
+    </div>
+
+    <!-- Claim Screen -->
+    <div id="screen-claim" class="screen" style="display:none;">
+      <h2>Approve the connection</h2>
+      <p>Open this link in your browser and approve the agent:</p>
+
+      <div class="claim-url-box">
+        <a id="claim-url" href="#" target="_blank" rel="noopener"></a>
+      </div>
+
+      <div class="status-line">
+        <span id="claim-status-dot" class="dot dot-yellow"></span>
+        <span id="claim-status-text">Waiting for you to visit the link...</span>
+      </div>
+
+      <div class="actions">
+        <button id="btn-cancel-claim" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Dashboard Screen -->
+    <div id="screen-dashboard" class="screen" style="display:none;">
+      <div class="endpoint-card">
+        <h2>Your Mining Endpoint</h2>
+        <div id="endpoint-display" class="endpoint-value">
+          <span id="endpoint-text">Waiting for tunnel...</span>
+          <button id="btn-copy" class="btn btn-copy" style="display:none;">Copy</button>
+        </div>
+        <span id="copy-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+      </div>
+
+      <div class="status-grid">
+        <div class="status-item">
+          <span id="dot-tunnel" class="dot dot-gray"></span>
+          <span class="status-label">Tunnel</span>
+          <span id="status-tunnel" class="status-value">—</span>
+        </div>
+        <div class="status-item">
+          <span id="dot-datum" class="dot dot-gray"></span>
+          <span class="status-label">Datum Gateway</span>
+          <span id="status-datum" class="status-value">—</span>
+        </div>
+        <div class="status-item">
+          <span id="dot-agent" class="dot dot-gray"></span>
+          <span class="status-label">Agent</span>
+          <span id="status-agent" class="status-value">—</span>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="btn-reset" class="btn btn-danger">Reset Connection</button>
+      </div>
+    </div>
+
+    <!-- Error display -->
+    <div id="error-bar" class="error-bar" style="display:none;">
+      <span id="error-text"></span>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+/references/
+/internal_docs/
+/builds/
+docker-images/
+scripts/*.js
+*.s9pk
