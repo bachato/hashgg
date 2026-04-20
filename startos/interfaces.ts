@@ -11,7 +11,7 @@ export const setInterfaces = sdk.setupInterfaces(async ({ effects }) => {
     name: i18n('Web UI'),
     id: 'ui',
     description: i18n(
-      'The HashGG dashboard for managing the playit.gg tunnel',
+      'The HashGG dashboard for managing the HashGG tunnel (playit.gg or VPS SSH)',
     ),
     type: 'ui',
     masked: false,

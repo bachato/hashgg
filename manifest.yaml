@@ -1,7 +1,7 @@
 id: hashgg
 title: "HashGG"
-version: 0.2.0.0
-release-notes: "Add StartOS 0.4.0 support; parameterize Datum Gateway hostname for dual-version compatibility"
+version: 0.3.0.0
+release-notes: "Add VPS SSH tunnel option as privacy-focused alternative to playit.gg (Bitcoin-funded, no fiat required)"
 license: MIT
 wrapper-repo: "https://github.com/paulscode/hashgg"
 upstream-repo: "https://github.com/playit-cloud/playit-agent"
@@ -9,12 +9,14 @@ support-site: "https://github.com/paulscode/hashgg/issues"
 marketing-site: "https://github.com/paulscode/hashgg"
 build: ["make"]
 description:
-  short: "Expose Datum Gateway to the internet via playit.gg"
+  short: "Expose Datum Gateway to the internet — playit.gg or VPS tunnel"
   long: |
     HashGG connects your Datum Gateway stratum port to the public internet
-    through playit.gg tunneling. No port forwarding or static IP required.
-    Miners anywhere can connect to your gateway using the public endpoint
-    displayed in the dashboard.
+    with no port forwarding or static IP required. Choose between two tunnel
+    options: playit.gg (~$3/month, fiat) or a VPS SSH tunnel (~$11/month,
+    Bitcoin-funded via BitLaunch for privacy). Both options monitor and
+    auto-restart the tunnel. Miners anywhere can connect using the public
+    endpoint displayed in the dashboard.
 assets:
   license: LICENSE
   icon: icon.png
@@ -33,7 +35,7 @@ hardware-requirements:
     - aarch64
 health-checks:
   tunnel:
-    name: "Playit Tunnel"
+    name: "Tunnel Status"
     success-message: "Tunnel is connected. Miners can connect to the public endpoint."
     type: docker
     image: main
@@ -68,7 +70,7 @@ volumes:
 interfaces:
   main:
     name: "HashGG Dashboard"
-    description: "Web UI for managing the playit.gg tunnel"
+    description: "Web UI for managing the HashGG tunnel (playit.gg or VPS SSH)"
     tor-config:
       port-mapping:
         80: "3000"

@@ -11,7 +11,7 @@ const dict = {
 
   // interfaces.ts
   'Web UI': 10,
-  'The HashGG dashboard for managing the playit.gg tunnel': 11,
+  'The HashGG dashboard for managing the HashGG tunnel (playit.gg or VPS SSH)': 11,
 } as const
 
 export type LangDict = { [K in (typeof dict)[keyof typeof dict]]?: string }

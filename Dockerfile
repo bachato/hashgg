@@ -2,7 +2,7 @@ FROM debian:bookworm-slim AS base
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      curl ca-certificates netcat-traditional socat nodejs jq procps && \
+      curl ca-certificates netcat-traditional socat nodejs jq procps openssh-client && \
     rm -rf /var/lib/apt/lists/*
 
 # Install yq (same approach as datum-gateway-startos)

@@ -323,3 +323,218 @@ details summary:hover {
   .manual-input { flex-direction: column; }
   .endpoint-value { flex-direction: column; align-items: stretch; }
 }
+
+/* ─── Tunnel choice ──────────────────────────────────────────── */
+.tunnel-choice-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+
+.tunnel-option {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tunnel-option-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.tunnel-option-price {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--accent);
+}
+
+.tunnel-option-features {
+  list-style: none;
+  padding: 0;
+  margin: 0.25rem 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  flex: 1;
+}
+
+.tunnel-option-features li::before {
+  content: '• ';
+  color: var(--text-muted);
+}
+
+@media (max-width: 480px) {
+  .tunnel-choice-grid { grid-template-columns: 1fr; }
+}
+
+/* ─── Step list (VPS instructions) ──────────────────────────── */
+.step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.step {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.step-num {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #0d1117;
+  font-weight: 700;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.step-body {
+  flex: 1;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.step-desc {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Config table inside step */
+.config-table {
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+}
+
+.config-row {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.2rem 0;
+}
+
+.config-key {
+  color: var(--text-muted);
+  min-width: 60px;
+  font-weight: 500;
+}
+
+.config-val {
+  font-family: var(--font-mono);
+}
+
+.btn-sm {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+/* ─── Script box ─────────────────────────────────────────────── */
+.script-box {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem;
+  max-height: 260px;
+  overflow-y: auto;
+  margin-top: 0.75rem;
+}
+
+.script-pre {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre;
+  color: var(--text);
+  margin: 0;
+}
+
+.code-hint {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+/* ─── Form inputs ────────────────────────────────────────────── */
+.form-group {
+  margin-bottom: 0.75rem;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 0.3rem;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.form-input-sm {
+  width: 120px;
+}
+
+/* Advanced options grid */
+.advanced-grid {
+  padding-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+details summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+}
+
+details summary:hover { color: var(--text); }
+
+/* ─── Test connection status ─────────────────────────────────── */
+.test-status {
+  font-size: 0.85rem;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+.test-status-pending { color: var(--text-muted); }
+.test-status-ok      { color: var(--green); }
+.test-status-err     { color: var(--red); }
+
+/* ─── Hint box ───────────────────────────────────────────────── */
+.hint-box {
+  background: rgba(88, 166, 255, 0.08);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}

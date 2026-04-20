@@ -88,7 +88,172 @@
       </div>
 
       <div class="actions">
+        <button id="btn-restart-tunnel" class="btn btn-secondary" style="display:none;">Restart Tunnel</button>
         <button id="btn-reset" class="btn btn-danger">Reset Connection</button>
+      </div>
+    </div>
+
+    <!-- Tunnel Choice Screen -->
+    <div id="screen-tunnel-choice" class="screen" style="display:none;">
+      <h2>Choose your tunnel method</h2>
+      <p>Both options require no port forwarding on your router and no static IP. Your tunnel is monitored and restarted automatically.</p>
+      <div class="tunnel-choice-grid">
+        <div class="tunnel-option" id="choice-playit">
+          <div class="tunnel-option-name">Playit.gg</div>
+          <div class="tunnel-option-price">~$3 / month</div>
+          <ul class="tunnel-option-features">
+            <li>Easiest setup</li>
+            <li>Fiat payment</li>
+            <li>Managed service</li>
+          </ul>
+          <button id="btn-choose-playit" class="btn btn-primary">Select</button>
+        </div>
+        <div class="tunnel-option" id="choice-vps">
+          <div class="tunnel-option-name">VPS Tunnel</div>
+          <div class="tunnel-option-price">~$11 / month</div>
+          <ul class="tunnel-option-features">
+            <li>Privacy-focused</li>
+            <li>Bitcoin payment</li>
+            <li>Full control</li>
+          </ul>
+          <button id="btn-choose-vps" class="btn btn-secondary">Select</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VPS Instructions Screen -->
+    <div id="screen-vps-instructions" class="screen" style="display:none;">
+      <h2>Set up your VPS</h2>
+      <p>We recommend <strong>BitLaunch</strong> — anonymous signup, funded with Bitcoin, no personal information required.</p>
+
+      <div class="step-list">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <strong>Create a BitLaunch account</strong><br>
+            <span class="step-desc">Only an email address is required — can be anonymous.</span><br>
+            <a href="https://app.bitlaunch.io/signup" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="margin-top:0.5rem;display:inline-block;">Open BitLaunch ↗</a>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <strong>Fund your account with Bitcoin</strong><br>
+            <span class="step-desc">Go to <em>Account → Add Funds</em>. Top up $20 (the default credit amount). For privacy, use non-KYC Bitcoin — e.g. from a CoinJoin wallet or a peer-to-peer exchange.</span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <strong>Create a server with these settings:</strong><br>
+            <div class="config-table">
+              <div class="config-row"><span class="config-key">Host</span><span class="config-val">BitLaunch</span></div>
+              <div class="config-row"><span class="config-key">Image</span><span class="config-val">Debian 13</span></div>
+              <div class="config-row"><span class="config-key">Size</span><span class="config-val">$11/mo (1 vCPU, 1 GB RAM)</span></div>
+            </div>
+            <span class="step-desc">Note the server's IP address once it's provisioned (~1–2 minutes).</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hint" style="margin-top:1rem;">
+        <strong>Already have a VPS?</strong> Any Debian, Ubuntu, or CentOS/Rocky/AlmaLinux server works. You'll need root SSH access.
+      </div>
+
+      <div class="actions">
+        <button id="btn-vps-instructions-continue" class="btn btn-primary">Continue →</button>
+        <button id="btn-vps-instructions-back" class="btn btn-secondary">← Back</button>
+      </div>
+    </div>
+
+    <!-- VPS Configure Screen (step 1: enter IP) -->
+    <div id="screen-vps-configure" class="screen" style="display:none;">
+      <h2>Enter your VPS IP address</h2>
+      <p>You'll need this to generate the exact setup command for your server.</p>
+
+      <div class="form-group">
+        <label class="form-label" for="input-vps-host">VPS IP address</label>
+        <input type="text" id="input-vps-host" class="form-input" placeholder="e.g. 192.0.2.1" autocomplete="off" spellcheck="false">
+      </div>
+
+      <details id="vps-advanced">
+        <summary>Advanced options</summary>
+        <div class="advanced-grid">
+          <div class="form-group">
+            <label class="form-label" for="input-vps-ssh-port">SSH port</label>
+            <input type="number" id="input-vps-ssh-port" class="form-input form-input-sm" value="22" min="1" max="65535">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="input-vps-user">SSH username</label>
+            <input type="text" id="input-vps-user" class="form-input form-input-sm" value="hashgg" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="input-vps-remote-port">Public stratum port</label>
+            <input type="number" id="input-vps-remote-port" class="form-input form-input-sm" value="23335" min="1024" max="65535">
+            <span class="hint">The port miners connect to on your VPS.</span>
+          </div>
+        </div>
+      </details>
+
+      <div class="actions" style="margin-top:1.25rem;">
+        <button id="btn-vps-configure-continue" class="btn btn-primary">Continue →</button>
+        <button id="btn-vps-configure-back" class="btn btn-secondary">← Back</button>
+      </div>
+    </div>
+
+    <!-- VPS Key / Script Screen (step 2: run script) -->
+    <div id="screen-vps-key" class="screen" style="display:none;">
+      <h2>Run the setup script on your VPS</h2>
+
+      <p>First, connect to your VPS as <code>root</code>:</p>
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+        <div class="code-hint" id="vps-ssh-cmd" style="flex:1;margin:0;">ssh root@…</div>
+        <button id="btn-copy-ssh-cmd" class="btn btn-secondary btn-sm">Copy</button>
+        <span id="copy-ssh-cmd-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+      </div>
+
+      <div class="hint-box" style="margin-bottom:0.75rem;">
+        <strong>Using BitLaunch with Password auth?</strong> You can skip SSH entirely — go to your server's
+        3-dot menu and select <em>Console</em> to open a browser-based terminal.
+        NOTE: You may not see a prompt — just type <code>root</code> and press Enter, then it will ask for your password.
+      </div>
+
+      <p>Then paste the setup script:</p>
+      <div class="script-box">
+        <pre id="vps-script-text" class="script-pre">Loading...</pre>
+      </div>
+      <div class="actions" style="margin-top:0.75rem;">
+        <button id="btn-copy-script" class="btn btn-secondary">Copy Script</button>
+        <span id="copy-script-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+      </div>
+      <p class="hint">The script is safe to re-run — all steps are idempotent.</p>
+
+      <div class="actions" style="margin-top:1rem;">
+        <button id="btn-vps-test" class="btn btn-secondary">Test Connection</button>
+        <span id="vps-test-status" class="test-status"></span>
+      </div>
+
+      <div class="actions">
+        <button id="btn-vps-connect" class="btn btn-primary">Connect</button>
+        <button id="btn-vps-key-back" class="btn btn-secondary">← Back</button>
+      </div>
+    </div>
+
+    <!-- VPS Connecting Screen -->
+    <div id="screen-vps-connecting" class="screen" style="display:none;">
+      <h2>Connecting to VPS…</h2>
+      <div class="status-line">
+        <span id="vps-connecting-dot" class="dot dot-yellow"></span>
+        <span id="vps-connecting-text">Establishing SSH tunnel…</span>
+      </div>
+      <div class="hint-box" style="margin-top:1rem;">
+        If this takes more than 30 seconds, check that:<br>
+        • The setup script ran successfully on your VPS<br>
+        • Port 22 is not blocked by your VPS provider's firewall<br>
+        • The IP address is correct
+      </div>
+      <div class="actions">
+        <button id="btn-vps-connecting-cancel" class="btn btn-secondary">Cancel</button>
       </div>
     </div>
 

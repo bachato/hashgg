@@ -6,7 +6,10 @@
 
 **Sovereign hash routing for StartOS. No port forwarding. No static IP. No middleman.**
 
-HashGG exposes your [Datum Gateway](https://github.com/ocean-xyz/datum-gateway) stratum port to the public internet through a [playit.gg](https://playit.gg) tunnel — so any miner, anywhere, can connect to *your* node and mine blocks *you* built.
+HashGG exposes your [Datum Gateway](https://github.com/ocean-xyz/datum-gateway) stratum port to the public internet — so any miner, anywhere, can connect to *your* node and mine blocks *you* built. Choose between two tunnel options:
+
+- **playit.gg** (~$3/month, fiat) — easiest setup, managed service
+- **VPS SSH tunnel** (~$11/month, Bitcoin) — privacy-focused, full control, no third-party dependency on the data path
 
 ---
 
@@ -32,17 +35,24 @@ Pool centralization: *gg.*
 
 HashGG is a [StartOS](https://start9.com) service that runs alongside Datum Gateway on your Start9 server. It:
 
-1. Manages a [playit.gg](https://playit.gg) tunnel agent — setup, supervision, automatic reconnection
-2. Bridges traffic from the public internet to your Datum Gateway stratum port
+1. Manages a tunnel between your Datum Gateway stratum port and the public internet — via either [playit.gg](https://playit.gg) or an SSH reverse tunnel to a VPS you control
+2. Supervises the tunnel agent and reconnects automatically
 3. Gives you a public `stratum+tcp://` endpoint you can hand to any miner
 
 No router configuration. No dynamic DNS. No VPN. Works behind NAT, double NAT, CGNAT — whatever your ISP throws at you.
 
 ### How it works
 
+**playit.gg mode:**
 ```
 Your miners ──→ playit.gg relay ──→ HashGG tunnel ──→ Datum Gateway ──→ OCEAN pool
   (anywhere)      (internet)       (your Start9)     (your Start9)     (non-custodial payout)
+```
+
+**VPS SSH tunnel mode:**
+```
+Your miners ──→ your VPS ──→ SSH reverse tunnel ──→ Datum Gateway ──→ OCEAN pool
+  (anywhere)     (public IP)         (your Start9)           (your Start9)     (non-custodial payout)
 ```
 
 Your Start9 server builds its own block templates using your own Bitcoin node. Datum Gateway serves those templates to miners via the stratum protocol. HashGG punches a hole through your NAT so miners can reach it from anywhere — without touching your router.
@@ -51,16 +61,19 @@ Your Start9 server builds its own block templates using your own Bitcoin node. D
 
 - A [Start9](https://start9.com) server running **StartOS 0.3.5.1** or **0.4.0**
 - **[Datum Gateway](https://github.com/ocean-xyz/datum-gateway)** installed and running (this requires Bitcoin Knots)
-- A [playit.gg](https://playit.gg) account with **Premium** (~$3/month) — [why?](#why-premium)
+- One of:
+  - A [playit.gg](https://playit.gg) account with **Premium** (~$3/month) — [why?](#why-premium), **or**
+  - A VPS with root SSH access (any Debian, Ubuntu, or RHEL-family distro). We recommend [BitLaunch](https://app.bitlaunch.io/signup) (~$11/month, funded with Bitcoin, anonymous signup).
 
 ## Quick Start
 
 1. Install **Datum Gateway** on your StartOS server (requires Bitcoin Knots)
-2. Sign up at [playit.gg](https://playit.gg) and upgrade to **Premium** (~$3/month)
-3. Install **HashGG** from the StartOS marketplace (or sideload the `.s9pk`)
-4. Open the HashGG dashboard and complete the one-time setup — you'll approve a connection to your playit.gg account
-5. Copy your public mining endpoint
-6. Point your miners to it
+2. Install **HashGG** from the StartOS marketplace (or sideload the `.s9pk`)
+3. Open the HashGG dashboard and pick your tunnel method:
+   - **playit.gg** — approve a one-time claim URL in your browser, then you're done
+   - **VPS** — provision a VPS, paste one setup script into its root shell, enter its IP in the HashGG UI
+4. Copy your public mining endpoint
+5. Point your miners to it
 
 That's it. Your miners can now connect to your Datum Gateway from anywhere on the internet.
 

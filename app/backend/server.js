@@ -8,6 +8,8 @@ const state = require('./state');
 const playitManager = require('./playit-manager');
 const claimFlow = require('./claim-flow');
 const tunnelStatus = require('./tunnel-status');
+const vpsManager = require('./vps-manager');
+const sshKeygenHelper = require('./ssh-keygen-helper');
 
 const PORT = 3000;
 const FRONTEND_DIR = '/usr/local/lib/hashgg/frontend';
@@ -169,8 +171,163 @@ async function handleApi(req, res) {
   if (pathname === '/api/reset' && req.method === 'POST') {
     playitManager.stop();
     tunnelStatus.stopPolling();
+    // Clean up any VPS artifacts too (defensive — in case state had leftover VPS data)
+    try { require('fs').unlinkSync('/root/data/vps_ssh_key'); } catch (_) {}
+    try { require('fs').unlinkSync('/root/data/vps_known_hosts'); } catch (_) {}
     state.reset();
     sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // --- VPS Tunnel API ---
+
+  // GET /api/tunnel/mode
+  if (pathname === '/api/tunnel/mode' && req.method === 'GET') {
+    sendJson(res, 200, { mode: state.get().tunnel_mode });
+    return;
+  }
+
+  // POST /api/tunnel/mode
+  if (pathname === '/api/tunnel/mode' && req.method === 'POST') {
+    const body = await parseBody(req);
+    if (body.mode !== 'playit' && body.mode !== 'vps') {
+      sendJson(res, 400, { error: 'mode must be playit or vps' });
+      return;
+    }
+    state.update({ tunnel_mode: body.mode });
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // GET /api/vps/key — return (or generate) the SSH public key
+  if (pathname === '/api/vps/key' && req.method === 'GET') {
+    let s = state.get();
+    if (!s.vps_ssh_public_key || !s.vps_ssh_private_key) {
+      const { privateKeyPem, publicKeyOpenSSH } = sshKeygenHelper.generateKeyPair();
+      state.update({ vps_ssh_private_key: privateKeyPem, vps_ssh_public_key: publicKeyOpenSSH });
+      s = state.get();
+    }
+    sendJson(res, 200, { public_key: s.vps_ssh_public_key });
+    return;
+  }
+
+  // GET /api/vps/setup-script — return bash script with public key embedded
+  if (pathname === '/api/vps/setup-script' && req.method === 'GET') {
+    let s = state.get();
+    if (!s.vps_ssh_public_key || !s.vps_ssh_private_key) {
+      const { privateKeyPem, publicKeyOpenSSH } = sshKeygenHelper.generateKeyPair();
+      state.update({ vps_ssh_private_key: privateKeyPem, vps_ssh_public_key: publicKeyOpenSSH });
+      s = state.get();
+    }
+    const remotePort = s.vps_remote_port || 23335;
+    const script = buildSetupScript(s.vps_ssh_public_key, remotePort);
+    sendJson(res, 200, { script });
+    return;
+  }
+
+  // POST /api/vps/configure
+  if (pathname === '/api/vps/configure' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const host = body.host;
+    const sshPort = body.ssh_port !== undefined ? Number(body.ssh_port) : undefined;
+    const sshUser = body.ssh_user;
+    const remotePort = body.remote_port !== undefined ? Number(body.remote_port) : undefined;
+
+    if (!host || typeof host !== 'string') {
+      sendJson(res, 400, { error: 'host is required' });
+      return;
+    }
+    if (!/^[a-zA-Z0-9.\-:]+$/.test(host) || host.length > 255) {
+      sendJson(res, 400, { error: 'invalid host' });
+      return;
+    }
+    if (sshPort !== undefined && (isNaN(sshPort) || sshPort < 1 || sshPort > 65535)) {
+      sendJson(res, 400, { error: 'ssh_port must be 1–65535' });
+      return;
+    }
+    if (sshUser !== undefined && !/^[a-z_][a-z0-9_\-]{0,31}$/.test(sshUser)) {
+      sendJson(res, 400, { error: 'invalid ssh_user' });
+      return;
+    }
+    if (remotePort !== undefined && (isNaN(remotePort) || remotePort < 1024 || remotePort > 65535)) {
+      sendJson(res, 400, { error: 'remote_port must be 1024–65535' });
+      return;
+    }
+
+    const patch = { vps_host: host };
+    if (sshPort !== undefined) patch.vps_ssh_port = sshPort;
+    if (sshUser !== undefined) patch.vps_ssh_user = sshUser;
+    if (remotePort !== undefined) patch.vps_remote_port = remotePort;
+    state.update(patch);
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // POST /api/vps/connect
+  if (pathname === '/api/vps/connect' && req.method === 'POST') {
+    const s = state.get();
+    if (!s.vps_host || !s.vps_ssh_private_key) {
+      sendJson(res, 400, { error: 'VPS not configured' });
+      return;
+    }
+    vpsManager.start();
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // POST /api/vps/disconnect
+  if (pathname === '/api/vps/disconnect' && req.method === 'POST') {
+    vpsManager.stop();
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // GET /api/vps/status
+  if (pathname === '/api/vps/status' && req.method === 'GET') {
+    const s = state.get();
+    sendJson(res, 200, {
+      configured: !!(s.vps_host && s.vps_ssh_private_key),
+      host: s.vps_host,
+      remote_port: s.vps_remote_port || 23335,
+      tunnel_status: s.vps_tunnel_status || 'disconnected',
+      last_error: s.vps_last_error || null,
+      public_endpoint: s.public_endpoint,
+      uptime: vpsManager.getUptime(),
+    });
+    return;
+  }
+
+  // POST /api/vps/reset
+  if (pathname === '/api/vps/reset' && req.method === 'POST') {
+    vpsManager.stop();
+    // Clear known_hosts so next connect re-verifies host key
+    try { require('fs').unlinkSync('/root/data/vps_known_hosts'); } catch (_) {}
+    try { require('fs').unlinkSync('/root/data/vps_ssh_key'); } catch (_) {}
+    state.update({
+      vps_host: null,
+      vps_ssh_port: 22,
+      vps_ssh_user: 'hashgg',
+      vps_remote_port: 23335,
+      vps_ssh_private_key: null,
+      vps_ssh_public_key: null,
+      vps_tunnel_status: 'disconnected',
+      vps_last_error: null,
+      tunnel_mode: null,
+      public_endpoint: null,
+    });
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // POST /api/vps/test-connection
+  if (pathname === '/api/vps/test-connection' && req.method === 'POST') {
+    const s = state.get();
+    if (!s.vps_host || !s.vps_ssh_private_key) {
+      sendJson(res, 400, { error: 'VPS not configured' });
+      return;
+    }
+    const result = await testVpsSshAuth(s);
+    sendJson(res, 200, result);
     return;
   }
 
@@ -332,9 +489,184 @@ async function handleRequest(req, res) {
   }
 }
 
+// Generate the VPS setup script with the public key and stratum port embedded
+function buildSetupScript(publicKey, stratumPort) {
+  return `#!/bin/bash
+set -euo pipefail
+
+HASHGG_PUBKEY="${publicKey}"
+STRATUM_PORT="${stratumPort}"
+SSH_USER="hashgg"
+SSH_HOME="/home/hashgg"
+SSHD_CONF_DIR="/etc/ssh/sshd_config.d"
+
+echo "=== HashGG VPS Setup ==="
+
+# --- OS Detection ---
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+  OS_FAMILY="\${ID_LIKE:-} \${ID:-}"
+else
+  echo "Cannot detect OS"; exit 1
+fi
+
+is_debian() { echo "$OS_FAMILY" | grep -qiE 'debian|ubuntu'; }
+is_rhel()   { echo "$OS_FAMILY" | grep -qiE 'rhel|fedora|centos|rocky|alma'; }
+
+# --- Ensure openssh-server is present ---
+if ! command -v sshd &>/dev/null; then
+  echo "Installing openssh-server..."
+  if is_debian; then
+    apt-get update -qq && apt-get install -y -qq openssh-server
+  elif is_rhel; then
+    dnf install -y -q openssh-server 2>/dev/null || yum install -y -q openssh-server
+    systemctl enable --now sshd
+  else
+    echo "Unsupported OS. Please install openssh-server manually."; exit 1
+  fi
+fi
+
+# --- Create / fix hashgg user ---
+if ! id "$SSH_USER" &>/dev/null; then
+  echo "Creating user: $SSH_USER"
+  useradd -r -m -d "$SSH_HOME" -s /usr/sbin/nologin "$SSH_USER"
+else
+  echo "User $SSH_USER already exists — repairing if needed"
+fi
+# Force home dir to be correct in /etc/passwd (fixes older scripts that used -M)
+usermod -d "$SSH_HOME" "$SSH_USER" 2>/dev/null || true
+usermod -s /usr/sbin/nologin "$SSH_USER" 2>/dev/null || true
+
+# --- Set up home dir and SSH authorized_keys ---
+mkdir -p "$SSH_HOME/.ssh"
+echo "$HASHGG_PUBKEY" > "$SSH_HOME/.ssh/authorized_keys"
+# Critical: sshd StrictModes requires these exact ownerships and permissions
+chown -R "$SSH_USER:$SSH_USER" "$SSH_HOME" 2>/dev/null || chown -R "$SSH_USER" "$SSH_HOME"
+chmod 755 "$SSH_HOME"
+chmod 700 "$SSH_HOME/.ssh"
+chmod 600 "$SSH_HOME/.ssh/authorized_keys"
+
+# --- Ensure sshd reads drop-in configs ---
+MAIN_CONF="/etc/ssh/sshd_config"
+if [ -d "$SSHD_CONF_DIR" ]; then
+  if ! grep -qE "^\\s*Include\\s+$SSHD_CONF_DIR/\\*\\.conf" "$MAIN_CONF" 2>/dev/null; then
+    echo "Adding Include directive to $MAIN_CONF"
+    # Include must be at the top, before any Match blocks
+    sed -i "1i Include $SSHD_CONF_DIR/*.conf" "$MAIN_CONF"
+  fi
+  CONF_FILE="$SSHD_CONF_DIR/hashgg.conf"
+else
+  mkdir -p "$SSHD_CONF_DIR"
+  CONF_FILE="$SSHD_CONF_DIR/hashgg.conf"
+  if ! grep -qE "^\\s*Include\\s+$SSHD_CONF_DIR/\\*\\.conf" "$MAIN_CONF" 2>/dev/null; then
+    sed -i "1i Include $SSHD_CONF_DIR/*.conf" "$MAIN_CONF"
+  fi
+fi
+
+# --- Configure sshd for remote port forwarding (always overwrite our file) ---
+cat > "$CONF_FILE" << 'SSHEOF'
+# HashGG tunnel config — managed by HashGG, do not edit manually
+Match User hashgg
+    AllowTcpForwarding remote
+    GatewayPorts clientspecified
+    X11Forwarding no
+    PermitTTY no
+    ForceCommand /bin/false
+    PubkeyAuthentication yes
+    PasswordAuthentication no
+    AuthorizedKeysFile /home/hashgg/.ssh/authorized_keys
+SSHEOF
+chmod 644 "$CONF_FILE"
+echo "Wrote $CONF_FILE"
+
+# --- Validate sshd config before reloading ---
+if ! sshd -t 2>/tmp/sshd-test.log; then
+  echo "ERROR: sshd config test failed:"
+  cat /tmp/sshd-test.log
+  exit 1
+fi
+
+# --- Open firewall port ---
+echo "Opening port $STRATUM_PORT/tcp in firewall..."
+if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+  ufw allow "$STRATUM_PORT/tcp" comment "HashGG stratum" || true
+elif command -v firewall-cmd &>/dev/null; then
+  firewall-cmd --permanent --add-port="$STRATUM_PORT/tcp" --quiet 2>/dev/null || true
+  firewall-cmd --reload --quiet 2>/dev/null || true
+else
+  echo "(No active firewall detected — ensure port $STRATUM_PORT is open in your VPS provider firewall.)"
+fi
+
+# --- Restart sshd (reload may not pick up Match blocks correctly on all distros) ---
+echo "Restarting sshd..."
+if systemctl list-units --type=service --all 2>/dev/null | grep -q "ssh\\.service"; then
+  systemctl restart ssh
+elif systemctl list-units --type=service --all 2>/dev/null | grep -q "sshd\\.service"; then
+  systemctl restart sshd
+else
+  service ssh restart 2>/dev/null || service sshd restart 2>/dev/null || true
+fi
+
+# --- Self-test: show what sshd will actually apply for the hashgg user ---
+echo ""
+echo "=== Verification ==="
+echo "User entry:      $(getent passwd $SSH_USER)"
+echo "Home dir exists: $([ -d "$SSH_HOME" ] && echo yes || echo no)"
+echo "authorized_keys: $(wc -l < "$SSH_HOME/.ssh/authorized_keys" 2>/dev/null || echo MISSING) line(s), $(stat -c '%a %U:%G' "$SSH_HOME/.ssh/authorized_keys" 2>/dev/null || echo '?')"
+EFFECTIVE_AUTH=$(sshd -T -C user=$SSH_USER 2>/dev/null | grep -i authorizedkeysfile || echo "(not set)")
+echo "sshd effective:  $EFFECTIVE_AUTH"
+EFFECTIVE_PUBKEY=$(sshd -T -C user=$SSH_USER 2>/dev/null | grep -i pubkeyauthentication || echo "(not set)")
+echo "sshd pubkeyauth: $EFFECTIVE_PUBKEY"
+
+echo ""
+echo "=== Setup complete! ==="
+echo "Return to HashGG and click Test Connection."
+`;
+}
+
+// Test SSH authentication (non-forwarding) — returns { success, error }
+function testVpsSshAuth(s) {
+  return new Promise((resolve) => {
+    const { spawn: spawnProc } = require('child_process');
+    const KEY_FILE = '/root/data/vps_ssh_key';
+    const KNOWN_HOSTS_FILE = '/root/data/vps_known_hosts';
+    try { require('fs').writeFileSync(KEY_FILE, s.vps_ssh_private_key, { mode: 0o600 }); }
+    catch (e) { return resolve({ success: false, error: 'Failed to write key file' }); }
+
+    // IPv6 addresses require bracket notation in SSH user@host form
+    const sshHost = s.vps_host.includes(':') ? `[${s.vps_host}]` : s.vps_host;
+    const args = [
+      '-o', 'StrictHostKeyChecking=accept-new',
+      '-o', `UserKnownHostsFile=${KNOWN_HOSTS_FILE}`,
+      '-o', 'ConnectTimeout=10',
+      '-o', 'BatchMode=yes',
+      '-i', KEY_FILE,
+      '-p', String(s.vps_ssh_port || 22),
+      `${s.vps_ssh_user || 'hashgg'}@${sshHost}`,
+    ];
+
+    let stderr = '';
+    const proc = spawnProc('/usr/bin/ssh', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.on('error', (e) => resolve({ success: false, error: e.message }));
+    proc.on('close', (code) => {
+      // code 255 = SSH error (connection refused, auth failed, etc.)
+      // code 0 or 1 = SSH connected (ForceCommand /bin/false exits 1)
+      if (code === 255) {
+        const msg = stderr.trim().split('\n').pop() || 'Connection failed';
+        resolve({ success: false, error: msg });
+      } else {
+        resolve({ success: true, error: null });
+      }
+    });
+    // Safety timeout
+    setTimeout(() => { try { proc.kill(); } catch (_) {} resolve({ success: false, error: 'Timed out' }); }, 15000);
+  });
+}
+
 // Startup
 function main() {
-  // Load state
+  // Load state (applies migration for pre-VPS installs)
   state.load();
 
   // Check if secret was set via StartOS config
@@ -344,27 +676,40 @@ function main() {
     const configSecret = execSync(`yq e '.playit.secret_key // ""' ${CONFIG_FILE}`, { encoding: 'utf8' }).trim();
     if (configSecret && configSecret !== 'null' && configSecret !== s.playit_secret) {
       console.log('[server] Secret key provided via StartOS config');
-      state.update({ playit_secret: configSecret, claim_status: 'completed' });
+      state.update({ playit_secret: configSecret, claim_status: 'completed', tunnel_mode: 'playit' });
     }
   } catch (err) {
     console.log('[server] Could not read StartOS config, using stored state');
   }
 
+  const mode = state.get().tunnel_mode;
+  console.log(`[server] Tunnel mode: ${mode || 'not set'}`);
+
   const stratumPort = getStratumPort();
 
-  // Start playit agent if we have a secret
-  if (state.get().playit_secret) {
+  if (mode === 'playit' && state.get().playit_secret) {
     playitManager.start();
     tunnelStatus.startPolling(stratumPort);
+  } else if (mode === 'vps') {
+    if (state.get().vps_host && state.get().vps_ssh_private_key) {
+      vpsManager.start();
+    }
   }
 
-  // When claim completes, start the agent
-  const checkClaimCompletion = setInterval(() => {
+  // Watch for mode/claim changes driven from the UI:
+  //  - fresh install picks 'playit' → completes claim → start playitd
+  //  - existing install switches mode → start the right manager
+  // The watcher runs unconditionally because `tunnel_mode` can become 'playit'
+  // after boot on a fresh install.
+  setInterval(() => {
     const current = state.get();
-    if (current.claim_status === 'completed' && current.playit_secret && playitManager.status === 'stopped') {
+    if (current.tunnel_mode === 'playit'
+        && current.claim_status === 'completed'
+        && current.playit_secret
+        && playitManager.status === 'stopped') {
+      console.log('[server] Claim completed — starting playit agent');
       playitManager.start();
       tunnelStatus.startPolling(stratumPort);
-      clearInterval(checkClaimCompletion);
     }
   }, 1000);
 
@@ -373,6 +718,21 @@ function main() {
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`[server] HashGG backend listening on port ${PORT}`);
   });
+
+  // Graceful shutdown: stop child tunnel processes so the container can exit.
+  // Without this, SIGTERM exits node immediately but playitd/ssh children are
+  // orphaned and the container hits the 30s SIGKILL timeout ("stuck in Stopping").
+  const shutdown = (signal) => {
+    console.log(`[server] Received ${signal}, shutting down...`);
+    try { playitManager.stop(); } catch (_) {}
+    try { vpsManager.stop(); } catch (_) {}
+    try { tunnelStatus.stopPolling(); } catch (_) {}
+    server.close(() => process.exit(0));
+    // Failsafe: exit after 5s even if server.close hangs
+    setTimeout(() => process.exit(0), 5000).unref();
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 main();
