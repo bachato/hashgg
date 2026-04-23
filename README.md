@@ -52,7 +52,7 @@ Your miners ──→ playit.gg relay ──→ HashGG tunnel ──→ Datum Ga
 **VPS SSH tunnel mode:**
 ```
 Your miners ──→ your VPS ──→ SSH reverse tunnel ──→ Datum Gateway ──→ OCEAN pool
-  (anywhere)     (public IP)         (your Start9)           (your Start9)     (non-custodial payout)
+  (anywhere)     (public IP)     (your Start9)      (your Start9)     (non-custodial payout)
 ```
 
 Your Start9 server builds its own block templates using your own Bitcoin node. Datum Gateway serves those templates to miners via the stratum protocol. HashGG punches a hole through your NAT so miners can reach it from anywhere — without touching your router.
