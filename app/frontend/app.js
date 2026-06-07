@@ -39,6 +39,50 @@ const els = {
   statusAgent: document.getElementById('status-agent'),
   btnRestartTunnel: document.getElementById('btn-restart-tunnel'),
   btnReset: document.getElementById('btn-reset'),
+  // Cleanup (playit orphan tunnels)
+  dashboardCleanupLink: document.getElementById('dashboard-cleanup-link'),
+  btnOpenCleanup: document.getElementById('btn-open-cleanup'),
+  cleanupModal: document.getElementById('cleanup-modal'),
+  cleanupLoading: document.getElementById('cleanup-loading'),
+  cleanupNone: document.getElementById('cleanup-none'),
+  cleanupFound: document.getElementById('cleanup-found'),
+  cleanupDeleting: document.getElementById('cleanup-deleting'),
+  cleanupResult: document.getElementById('cleanup-result'),
+  cleanupList: document.getElementById('cleanup-list'),
+  cleanupCount: document.getElementById('cleanup-count'),
+  cleanupCountBtn: document.getElementById('cleanup-count-btn'),
+  cleanupResultText: document.getElementById('cleanup-result-text'),
+  cleanupAgentsNote: document.getElementById('cleanup-agents-note'),
+  cleanupAgentCount: document.getElementById('cleanup-agent-count'),
+  cleanupAgentsLink: document.getElementById('cleanup-agents-link'),
+  btnCleanupConfirm: document.getElementById('btn-cleanup-confirm'),
+  btnCleanupCancel: document.getElementById('btn-cleanup-cancel'),
+  btnCleanupCloseNone: document.getElementById('btn-cleanup-close-none'),
+  btnCleanupCloseResult: document.getElementById('btn-cleanup-close-result'),
+  // Teardown (remove HashGG from VPS)
+  dashboardTeardownLink: document.getElementById('dashboard-teardown-link'),
+  btnOpenTeardown: document.getElementById('btn-open-teardown'),
+  teardownModal: document.getElementById('teardown-modal'),
+  teardownScriptText: document.getElementById('teardown-script-text'),
+  btnCopyTeardown: document.getElementById('btn-copy-teardown'),
+  copyTeardownFeedback: document.getElementById('copy-teardown-feedback'),
+  btnTeardownClose: document.getElementById('btn-teardown-close'),
+  // Additional miners (advanced)
+  advancedMiners: document.getElementById('advanced-miners'),
+  connectionsList: document.getElementById('connections-list'),
+  connectionsEmpty: document.getElementById('connections-empty'),
+  btnAddConnection: document.getElementById('btn-add-connection'),
+  connectionForm: document.getElementById('connection-form'),
+  connName: document.getElementById('conn-name'),
+  connIp: document.getElementById('conn-ip'),
+  connPort: document.getElementById('conn-port'),
+  btnConnSave: document.getElementById('btn-conn-save'),
+  btnConnCancel: document.getElementById('btn-conn-cancel'),
+  connFormStatus: document.getElementById('conn-form-status'),
+  connFirewallNote: document.getElementById('conn-firewall-note'),
+  connFirewallCmd: document.getElementById('conn-firewall-cmd'),
+  btnCopyFirewall: document.getElementById('btn-copy-firewall'),
+  copyFirewallFeedback: document.getElementById('copy-firewall-feedback'),
   // Tunnel choice
   btnChoosePlayit: document.getElementById('btn-choose-playit'),
   btnChooseVps: document.getElementById('btn-choose-vps'),
@@ -180,6 +224,9 @@ async function pollStatus() {
         updateVpsUI(status);
       }
     }
+
+    // Refresh additional-miner statuses while the dashboard is visible.
+    if (currentScreen === 'dashboard') refreshConnections();
   } catch (err) {
     console.error('Poll error:', err);
   }
@@ -326,6 +373,11 @@ function updateDashboard(status, mode) {
 
     els.btnRestartTunnel.style.display = 'none';
   }
+
+  // Cleanup link is playit-only (uses the playit account API).
+  els.dashboardCleanupLink.style.display = mode === 'playit' ? 'block' : 'none';
+  // Teardown link is vps-only (removes HashGG's config from the VPS).
+  els.dashboardTeardownLink.style.display = mode === 'vps' ? 'block' : 'none';
 
   // Datum — same for both modes
   els.dotDatum.className = 'dot dot-green';
@@ -535,6 +587,286 @@ els.btnReset.addEventListener('click', async () => {
   } catch (err) {
     showError('Failed to reset: ' + err.message);
   }
+});
+
+// ─── Cleanup: playit.gg orphan tunnels ───────────────────────────────────────
+
+let cleanupOrphanIds = [];
+
+function showCleanupSection(name) {
+  const sections = {
+    loading: els.cleanupLoading,
+    none: els.cleanupNone,
+    found: els.cleanupFound,
+    deleting: els.cleanupDeleting,
+    result: els.cleanupResult,
+  };
+  Object.values(sections).forEach(s => { if (s) s.style.display = 'none'; });
+  if (sections[name]) sections[name].style.display = 'block';
+}
+
+function openCleanupModal() {
+  els.cleanupModal.style.display = 'flex';
+  showCleanupSection('loading');
+  scanForCleanup();
+}
+
+function closeCleanupModal() {
+  els.cleanupModal.style.display = 'none';
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString();
+  } catch (_) { return ''; }
+}
+
+async function scanForCleanup() {
+  try {
+    const res = await api('GET', '/playit/cleanup/scan');
+    if (res.error) { showError(res.error); closeCleanupModal(); return; }
+    const orphans = res.orphan_tunnels || [];
+    cleanupOrphanIds = orphans.map(t => t.id);
+
+    if (orphans.length === 0) {
+      showCleanupSection('none');
+      return;
+    }
+
+    els.cleanupCount.textContent = String(orphans.length);
+    els.cleanupCountBtn.textContent = String(orphans.length);
+    els.cleanupList.innerHTML = '';
+    orphans.forEach(t => {
+      const li = document.createElement('li');
+      const created = formatDate(t.created_at);
+      const ep = t.endpoint ? ` · ${t.endpoint}` : '';
+      const when = created ? ` · created ${created}` : '';
+      li.textContent = `${t.name}${ep}${when}`;
+      els.cleanupList.appendChild(li);
+    });
+
+    if (res.account_dashboard_url) els.cleanupAgentsLink.href = res.account_dashboard_url;
+    const agentCount = (res.orphan_agent_ids || []).length;
+    els.cleanupAgentCount.textContent = String(agentCount);
+    els.cleanupModal._agentCount = agentCount;
+
+    showCleanupSection('found');
+  } catch (err) {
+    showError('Scan failed: ' + err.message);
+    closeCleanupModal();
+  }
+}
+
+async function confirmCleanup() {
+  showCleanupSection('deleting');
+  try {
+    const res = await api('POST', '/playit/cleanup/delete', { tunnel_ids: cleanupOrphanIds });
+    if (res.error) { showError(res.error); closeCleanupModal(); return; }
+    const deleted = res.deleted || 0;
+    const failed = (res.results || []).filter(r => !r.deleted).length;
+    els.cleanupResultText.textContent = failed
+      ? `Deleted ${deleted} tunnel(s). ${failed} could not be deleted — you can try again.`
+      : `Deleted ${deleted} tunnel(s).`;
+    const agentCount = els.cleanupModal._agentCount || 0;
+    els.cleanupAgentsNote.style.display = agentCount > 0 ? 'block' : 'none';
+    showCleanupSection('result');
+  } catch (err) {
+    showError('Delete failed: ' + err.message);
+    closeCleanupModal();
+  }
+}
+
+els.btnOpenCleanup.addEventListener('click', (e) => { e.preventDefault(); openCleanupModal(); });
+els.btnCleanupConfirm.addEventListener('click', confirmCleanup);
+els.btnCleanupCancel.addEventListener('click', closeCleanupModal);
+els.btnCleanupCloseNone.addEventListener('click', closeCleanupModal);
+els.btnCleanupCloseResult.addEventListener('click', closeCleanupModal);
+els.cleanupModal.addEventListener('click', (e) => {
+  if (e.target === els.cleanupModal) closeCleanupModal();
+});
+
+// ─── Teardown: remove HashGG from the VPS ─────────────────────────────────────
+
+async function openTeardownModal() {
+  els.teardownScriptText.textContent = 'Loading…';
+  els.teardownModal.style.display = 'flex';
+  try {
+    const res = await api('GET', '/vps/teardown-script');
+    if (res.error || !res.script) {
+      showError(res.error || 'Failed to load teardown script');
+      closeTeardownModal();
+      return;
+    }
+    els.teardownScriptText.textContent = res.script;
+  } catch (err) {
+    showError('Failed to load teardown script: ' + err.message);
+    closeTeardownModal();
+  }
+}
+
+function closeTeardownModal() {
+  els.teardownModal.style.display = 'none';
+}
+
+els.btnOpenTeardown.addEventListener('click', (e) => { e.preventDefault(); openTeardownModal(); });
+els.btnCopyTeardown.addEventListener('click', () => {
+  copyText(els.teardownScriptText.textContent, els.copyTeardownFeedback, els.teardownScriptText);
+});
+els.btnTeardownClose.addEventListener('click', closeTeardownModal);
+els.teardownModal.addEventListener('click', (e) => {
+  if (e.target === els.teardownModal) closeTeardownModal();
+});
+
+// ─── Additional miners (advanced) ─────────────────────────────────────────────
+
+const CONN_STATUS = {
+  active:      { dot: 'dot-green',  text: 'Active' },
+  pending:     { dot: 'dot-yellow', text: 'Connecting…' },
+  unreachable: { dot: 'dot-red',    text: 'Stratum unreachable' },
+  error:       { dot: 'dot-red',    text: 'Error' },
+};
+
+let connFormBusy = false;
+
+async function refreshConnections() {
+  try {
+    const res = await api('GET', '/connections');
+    renderConnections(res.connections || []);
+  } catch (_) { /* non-fatal */ }
+}
+
+let lastConnSig = null;
+
+function renderConnections(list) {
+  // Skip the rebuild when nothing visible changed, so the 3s poll doesn't wipe
+  // a row's "Copied!" feedback or swap the DOM out from under a click.
+  const sig = JSON.stringify(list.map((c) =>
+    [c.id, c.name, c.local_ip, c.local_port, c.public_endpoint, c.status]));
+  if (sig === lastConnSig) return;
+  lastConnSig = sig;
+
+  els.connectionsEmpty.style.display = list.length ? 'none' : 'block';
+  els.connectionsList.innerHTML = '';
+
+  list.forEach((c) => {
+    const li = document.createElement('li');
+    li.className = 'connection-row';
+
+    const st = CONN_STATUS[c.status] || { dot: 'dot-gray', text: c.status || '—' };
+    const dot = document.createElement('span');
+    dot.className = `dot ${st.dot}`;
+
+    const info = document.createElement('div');
+    info.className = 'connection-info';
+    const title = document.createElement('div');
+    title.className = 'connection-name';
+    title.textContent = c.name;
+    const meta = document.createElement('div');
+    meta.className = 'connection-meta';
+    const ep = c.public_endpoint ? `stratum+tcp://${c.public_endpoint}` : st.text;
+    meta.textContent = `→ ${c.local_ip}:${c.local_port}  ·  ${ep}`;
+    info.appendChild(title);
+    info.appendChild(meta);
+
+    const actions = document.createElement('div');
+    actions.className = 'connection-actions';
+    if (c.public_endpoint) {
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'btn btn-secondary btn-sm';
+      copyBtn.textContent = 'Copy';
+      // Per-row feedback element so confirmation appears at the clicked row, and
+      // the manual-select fallback (clipboard-blocked iframes) targets this row.
+      const rowFeedback = document.createElement('span');
+      rowFeedback.className = 'copy-feedback';
+      rowFeedback.style.display = 'none';
+      rowFeedback.textContent = 'Copied!';
+      copyBtn.addEventListener('click', () => {
+        copyText(`stratum+tcp://${c.public_endpoint}`, rowFeedback, meta);
+      });
+      actions.appendChild(copyBtn);
+      actions.appendChild(rowFeedback);
+    }
+    const rmBtn = document.createElement('button');
+    rmBtn.className = 'btn btn-danger btn-sm';
+    rmBtn.textContent = 'Remove';
+    rmBtn.addEventListener('click', () => removeConnection(c));
+    actions.appendChild(rmBtn);
+
+    li.appendChild(dot);
+    li.appendChild(info);
+    li.appendChild(actions);
+    els.connectionsList.appendChild(li);
+  });
+}
+
+function openConnectionForm() {
+  els.connFirewallNote.style.display = 'none';
+  els.connFormStatus.textContent = '';
+  els.connName.value = '';
+  els.connIp.value = '';
+  els.connPort.value = '';
+  els.connectionForm.style.display = 'block';
+  els.btnAddConnection.style.display = 'none';
+  els.connName.focus();
+}
+
+function closeConnectionForm() {
+  els.connectionForm.style.display = 'none';
+  els.btnAddConnection.style.display = 'inline-block';
+  els.connFormStatus.textContent = '';
+}
+
+async function saveConnection() {
+  if (connFormBusy) return;
+  const name = els.connName.value.trim();
+  const local_ip = els.connIp.value.trim();
+  const local_port = parseInt(els.connPort.value, 10);
+  if (!name) { setConnFormStatus('Enter a name', 'err'); return; }
+  if (!local_ip) { setConnFormStatus('Enter the stratum IP', 'err'); return; }
+  if (!local_port || local_port < 1 || local_port > 65535) { setConnFormStatus('Enter a valid port', 'err'); return; }
+
+  connFormBusy = true;
+  setConnFormStatus('Adding…', 'pending');
+  try {
+    const res = await api('POST', '/connections', { name, local_ip, local_port });
+    if (res.error) { setConnFormStatus(res.error, 'err'); connFormBusy = false; return; }
+    closeConnectionForm();
+    if (res.firewall_cmd) {
+      els.connFirewallCmd.textContent = res.firewall_cmd;
+      els.connFirewallNote.style.display = 'block';
+    }
+    refreshConnections();
+  } catch (err) {
+    setConnFormStatus('Failed: ' + err.message, 'err');
+  }
+  connFormBusy = false;
+}
+
+function setConnFormStatus(msg, kind) {
+  els.connFormStatus.textContent = msg;
+  els.connFormStatus.className = 'test-status' +
+    (kind === 'err' ? ' test-status-err' : kind === 'pending' ? ' test-status-pending' : '');
+}
+
+async function removeConnection(c) {
+  if (!confirm(`Remove "${c.name}"? Its tunnel will be deleted and miners can no longer connect to it.`)) return;
+  try {
+    const res = await api('POST', '/connections/delete', { id: c.id });
+    if (res.error) { showError(res.error); return; }
+    refreshConnections();
+  } catch (err) {
+    showError('Failed to remove: ' + err.message);
+  }
+}
+
+els.btnAddConnection.addEventListener('click', openConnectionForm);
+els.btnConnCancel.addEventListener('click', closeConnectionForm);
+els.btnConnSave.addEventListener('click', saveConnection);
+els.btnCopyFirewall.addEventListener('click', () => {
+  copyText(els.connFirewallCmd.textContent, els.copyFirewallFeedback, els.connFirewallCmd);
 });
 
 // ─── Initialize ───────────────────────────────────────────────────────────────

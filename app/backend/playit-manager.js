@@ -100,12 +100,14 @@ class PlayitManager extends EventEmitter {
       this.process = null;
       // Bump generation so the old close handler is ignored
       this.generation++;
+      // Force-kill via the process HANDLE (not a raw PID) after 5s if it hasn't
+      // exited — killing by PID risks hitting a reused PID after a fast restart.
+      let exited = false;
+      proc.once('exit', () => { exited = true; });
       proc.kill('SIGTERM');
-      // Force kill after 5 seconds
-      const pid = proc.pid;
       setTimeout(() => {
-        try { process.kill(pid, 'SIGKILL'); } catch (_) {}
-      }, 5000);
+        if (!exited) { try { proc.kill('SIGKILL'); } catch (_) {} }
+      }, 5000).unref();
     } else {
       this._setStatus('stopped');
     }

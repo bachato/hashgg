@@ -1,7 +1,7 @@
 id: hashgg
 title: "HashGG"
-version: 0.5.0.0
-release-notes: "Add Umbrel community-app-store support. Fix VPS tunnel when DATUM_STRATUM_PORT is overridden (previously hardcoded 23335). UI: favicon + clipboard fallback that selects source text when browser blocks clipboard API."
+version: 0.6.0.0
+release-notes: "Additional miners: expose extra stratum servers through their own tunnels (playit.gg or VPS) from a new Advanced section, each with live status. Playit.gg cleanup: delete leftover tunnels from previous installs to reclaim your quota (with identifiable agent naming + guidance for the manual agent-deletion step). VPS: one-click teardown script to cleanly remove HashGG's user, SSH config, and firewall rule when switching providers or uninstalling."
 license: MIT
 wrapper-repo: "https://github.com/paulscode/hashgg"
 upstream-repo: "https://github.com/playit-cloud/playit-agent"

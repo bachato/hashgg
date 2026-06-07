@@ -19,6 +19,7 @@ const INITIAL_STATE = {
   claim_code: null,
   claim_status: 'idle',
   agent_status: 'stopped',
+  agent_renamed: false,         // true once we've renamed our agent to "HashGG (...)"
   // --- VPS tunnel ---
   vps_host: null,
   vps_ssh_port: 22,
@@ -29,9 +30,19 @@ const INITIAL_STATE = {
   vps_tunnel_status: 'disconnected',
   vps_last_error: null,
   vps_host_key_verified: false, // true after first successful connect + key stored
+  // --- Additional miners (advanced) ---
+  // Each: { id, name, local_ip, local_port, listen_port (local socat bridge),
+  //         tunnel_id (playit), public_endpoint, remote_port (vps), status, last_error }
+  extra_connections: [],
 };
 
 let currentState = null;
+
+// Fresh copy of the defaults with its own array instances, so we never share the
+// INITIAL_STATE.extra_connections reference (in-place mutation would leak into it).
+function freshInitial() {
+  return { ...INITIAL_STATE, extra_connections: [] };
+}
 
 function ensureDir() {
   if (!fs.existsSync(STATE_DIR)) {
@@ -48,7 +59,7 @@ function load() {
       throw new Error('Invalid state format');
     }
     // Ensure all expected fields exist (backfills new fields on upgrade from 0.1.x / 0.2.x)
-    currentState = { ...INITIAL_STATE, ...currentState };
+    currentState = { ...freshInitial(), ...currentState };
     // Migration: existing users with playit_secret but no tunnel_mode — tunnel_mode
     // field didn't exist before 0.3.0.0, so any existing secret means they were on playit.
     if (!currentState.tunnel_mode && currentState.playit_secret) {
@@ -63,14 +74,14 @@ function load() {
     }
   } catch (err) {
     if (err.code === 'ENOENT') {
-      currentState = { ...INITIAL_STATE };
+      currentState = freshInitial();
       save();
     } else {
       // Corrupt file — back it up and reset
       const backupPath = `${STATE_FILE}.corrupt.${Date.now()}`;
       try { fs.copyFileSync(STATE_FILE, backupPath); } catch (_) {}
       console.error(`[state] Corrupt state file backed up to ${backupPath}, resetting`);
-      currentState = { ...INITIAL_STATE };
+      currentState = freshInitial();
       save();
     }
   }
@@ -78,11 +89,19 @@ function load() {
 }
 
 function save() {
-  ensureDir();
-  currentState.last_updated = new Date().toISOString();
-  const tmp = STATE_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(currentState, null, 2), 'utf8');
-  fs.renameSync(tmp, STATE_FILE);
+  // In-memory state stays authoritative; a failed persist (disk full, read-only
+  // fs) must not throw out of update() — many callers are inside child-process
+  // event handlers where an uncaught throw would crash the supervisor. Atomic
+  // temp+rename so a partial write never corrupts the live file.
+  try {
+    ensureDir();
+    currentState.last_updated = new Date().toISOString();
+    const tmp = STATE_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(currentState, null, 2), 'utf8');
+    fs.renameSync(tmp, STATE_FILE);
+  } catch (err) {
+    console.error(`[state] Failed to persist state: ${err.message}`);
+  }
 }
 
 function get() {
@@ -98,7 +117,7 @@ function update(patch) {
 }
 
 function reset() {
-  currentState = { ...INITIAL_STATE };
+  currentState = freshInitial();
   save();
   return currentState;
 }

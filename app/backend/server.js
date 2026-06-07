@@ -8,6 +8,8 @@ const state = require('./state');
 const playitManager = require('./playit-manager');
 const claimFlow = require('./claim-flow');
 const tunnelStatus = require('./tunnel-status');
+const playitCleanup = require('./playit-cleanup');
+const connections = require('./connections');
 const vpsManager = require('./vps-manager');
 const sshKeygenHelper = require('./ssh-keygen-helper');
 
@@ -34,11 +36,21 @@ function getStratumPort() {
   }
   try {
     const { execSync } = require('child_process');
-    const port = execSync(`yq e '.advanced.datum_stratum_port // 23335' ${CONFIG_FILE}`, { encoding: 'utf8' }).trim();
+    const port = execSync(`yq e '.advanced.datum_stratum_port // 23335' ${CONFIG_FILE}`, { encoding: 'utf8', timeout: 5000 }).trim();
     return parseInt(port, 10) || 23335;
   } catch {
     return 23335;
   }
+}
+
+// The LOCAL port the tunnel (playit/ssh) must forward to — i.e. where socat is
+// listening (set by the entrypoint's LISTEN_PORT). This is NOT the Datum stratum
+// port: on StartOS 0.4.0 they differ (socat 23335 → Datum 23334). Mirrors the VPS
+// manager's LOCAL_STRATUM_PORT so both tunnel paths target the same local port.
+function getListenPort() {
+  const p = parseInt(process.env.LISTEN_PORT || process.env.DATUM_STRATUM_PORT, 10);
+  if (p) return p;
+  return getStratumPort();
 }
 
 // Serve static files
@@ -87,7 +99,10 @@ function parseBody(req) {
       const body = Buffer.concat(chunks).toString();
       if (!body) { resolve({}); return; }
       try {
-        resolve(JSON.parse(body));
+        const parsed = JSON.parse(body);
+        // Guard against non-object JSON (e.g. `null`, `123`, `"x"`) so handlers
+        // that read body.foo get a 400, not a TypeError → opaque 500.
+        resolve(parsed && typeof parsed === 'object' ? parsed : {});
       } catch (e) {
         reject(new Error('Invalid JSON'));
       }
@@ -156,10 +171,10 @@ async function handleApi(req, res) {
       claim_code: null,
     });
 
-    // Start the agent with the new key
+    // Start the agent with the new key. The tunnel must forward to socat's local
+    // port (LISTEN_PORT), not the Datum port — these differ on StartOS 0.4.0.
     playitManager.restart();
-    const stratumPort = getStratumPort();
-    tunnelStatus.startPolling(stratumPort);
+    tunnelStatus.startPolling(getListenPort());
 
     sendJson(res, 200, { ok: true });
     return;
@@ -175,12 +190,111 @@ async function handleApi(req, res) {
   // POST /api/reset
   if (pathname === '/api/reset' && req.method === 'POST') {
     playitManager.stop();
+    vpsManager.stop(); // defensive — in case state had leftover VPS data
     tunnelStatus.stopPolling();
+    connections.stopPolling();
+    // Delete additional-miner tunnels from the playit account so they don't leak
+    // quota (we still hold the secret here; after reset we won't).
+    for (const c of (state.get().extra_connections || [])) {
+      if (c.tunnel_id) { try { await tunnelStatus.deleteTunnel(c.tunnel_id); } catch (_) {} }
+    }
     // Clean up any VPS artifacts too (defensive — in case state had leftover VPS data)
     try { require('fs').unlinkSync('/root/data/vps_ssh_key'); } catch (_) {}
     try { require('fs').unlinkSync('/root/data/vps_known_hosts'); } catch (_) {}
     state.reset();
     sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // --- Playit.gg account cleanup ---
+
+  // GET /api/playit/cleanup/scan — find orphan HashGG tunnels from old installs
+  if (pathname === '/api/playit/cleanup/scan' && req.method === 'GET') {
+    try {
+      const result = await playitCleanup.scanAccount();
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, 400, { error: err.message });
+    }
+    return;
+  }
+
+  // POST /api/playit/cleanup/delete — delete the given orphan tunnel ids
+  if (pathname === '/api/playit/cleanup/delete' && req.method === 'POST') {
+    const body = await parseBody(req);
+    if (!Array.isArray(body.tunnel_ids)) {
+      sendJson(res, 400, { error: 'tunnel_ids must be an array' });
+      return;
+    }
+    try {
+      const result = await playitCleanup.deleteOrphans(body.tunnel_ids);
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, 400, { error: err.message });
+    }
+    return;
+  }
+
+  // --- Additional miners (extra connections) ---
+
+  // GET /api/connections — list extra connections with live status
+  if (pathname === '/api/connections' && req.method === 'GET') {
+    sendJson(res, 200, { connections: connections.list() });
+    return;
+  }
+
+  // POST /api/connections — add an extra stratum connection
+  if (pathname === '/api/connections' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const name = (body.name || '').toString().trim();
+    const localIp = (body.local_ip || '').toString().trim();
+    const localPort = body.local_port !== undefined ? Number(body.local_port) : NaN;
+
+    if (!name || name.length > 40 || !/^[A-Za-z0-9 _.\-]+$/.test(name)) {
+      sendJson(res, 400, { error: 'Name may use letters, numbers, spaces, _ . - (40 chars max)' });
+      return;
+    }
+    // Reject a leading '-' so the value can never be parsed as an ssh/curl option,
+    // and forbid the regex's own metachar-free but tool-confusing forms.
+    if (!localIp || localIp[0] === '-' || !/^[a-zA-Z0-9.\-:]+$/.test(localIp) || localIp.length > 255) {
+      sendJson(res, 400, { error: 'Please enter a valid stratum IP or hostname' });
+      return;
+    }
+    if (isNaN(localPort) || localPort < 1 || localPort > 65535) {
+      sendJson(res, 400, { error: 'Stratum port must be 1–65535' });
+      return;
+    }
+    if (localIp === '0.0.0.0') {
+      sendJson(res, 400, { error: '0.0.0.0 is not a valid stratum address' });
+      return;
+    }
+    if (connections.list().some((c) => c.local_ip === localIp && c.local_port === localPort)) {
+      sendJson(res, 400, { error: 'That stratum address:port is already added' });
+      return;
+    }
+    try {
+      const result = await connections.add({ name, local_ip: localIp, local_port: localPort });
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, 400, { error: err.message });
+    }
+    return;
+  }
+
+  // POST /api/connections/delete — remove an extra connection
+  if (pathname === '/api/connections/delete' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const id = (body.id || '').toString();
+    if (!id) {
+      sendJson(res, 400, { error: 'id is required' });
+      return;
+    }
+    try {
+      const ok = await connections.remove(id);
+      sendJson(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'Connection not found' });
+    } catch (err) {
+      sendJson(res, 400, { error: err.message });
+    }
     return;
   }
 
@@ -199,7 +313,14 @@ async function handleApi(req, res) {
       sendJson(res, 400, { error: 'mode must be playit or vps' });
       return;
     }
-    state.update({ tunnel_mode: body.mode });
+    const patch = { tunnel_mode: body.mode };
+    // Additional-miner connections are mode-specific (playit tunnel_id vs VPS
+    // remote_port); if the mode actually changes, drop any carried over so they
+    // can't be misinterpreted.
+    if (state.get().tunnel_mode && state.get().tunnel_mode !== body.mode) {
+      patch.extra_connections = [];
+    }
+    state.update(patch);
     sendJson(res, 200, { ok: true });
     return;
   }
@@ -230,6 +351,19 @@ async function handleApi(req, res) {
     return;
   }
 
+  // GET /api/vps/teardown-script — return bash script that removes HashGG from the VPS
+  if (pathname === '/api/vps/teardown-script' && req.method === 'GET') {
+    const s = state.get();
+    // Close every port HashGG opened: the primary plus each additional miner's.
+    const ports = [s.vps_remote_port || 23335];
+    for (const c of (s.extra_connections || [])) {
+      if (c.remote_port && !ports.includes(c.remote_port)) ports.push(c.remote_port);
+    }
+    const script = buildTeardownScript(ports);
+    sendJson(res, 200, { script });
+    return;
+  }
+
   // POST /api/vps/configure
   if (pathname === '/api/vps/configure' && req.method === 'POST') {
     const body = await parseBody(req);
@@ -242,7 +376,7 @@ async function handleApi(req, res) {
       sendJson(res, 400, { error: 'host is required' });
       return;
     }
-    if (!/^[a-zA-Z0-9.\-:]+$/.test(host) || host.length > 255) {
+    if (host[0] === '-' || !/^[a-zA-Z0-9.\-:]+$/.test(host) || host.length > 255) {
       sendJson(res, 400, { error: 'invalid host' });
       return;
     }
@@ -305,6 +439,7 @@ async function handleApi(req, res) {
   // POST /api/vps/reset
   if (pathname === '/api/vps/reset' && req.method === 'POST') {
     vpsManager.stop();
+    connections.stopPolling();
     // Clear known_hosts so next connect re-verifies host key
     try { require('fs').unlinkSync('/root/data/vps_known_hosts'); } catch (_) {}
     try { require('fs').unlinkSync('/root/data/vps_ssh_key'); } catch (_) {}
@@ -319,6 +454,7 @@ async function handleApi(req, res) {
       vps_last_error: null,
       tunnel_mode: null,
       public_endpoint: null,
+      extra_connections: [],
     });
     sendJson(res, 200, { ok: true });
     return;
@@ -340,11 +476,13 @@ async function handleApi(req, res) {
   if (pathname === '/api/diag' && req.method === 'GET') {
     const net = require('net');
     const stratumPort = getStratumPort();
+    const listenPort = getListenPort();
     const results = {};
 
-    // Test 1: Can we connect to 127.0.0.1:stratumPort (socat)?
+    // Test 1: Can we connect to 127.0.0.1:listenPort (socat)? This is the port the
+    // tunnel forwards to — distinct from the Datum port on StartOS 0.4.0.
     const testLocal = () => new Promise((resolve) => {
-      const sock = net.createConnection({ host: '127.0.0.1', port: stratumPort }, () => {
+      const sock = net.createConnection({ host: '127.0.0.1', port: listenPort }, () => {
         results.local_connect = 'ok';
         // Test 2: Send mining.subscribe and check response
         const msg = JSON.stringify({id:1,method:'mining.subscribe',params:['diag/1.0']}) + '\n';
@@ -406,6 +544,7 @@ async function handleApi(req, res) {
 
     await testLocal();
     await testDatum();
+    results.listen_port = listenPort;
     results.stratum_port = stratumPort;
     results.datum_host = datumHost;
 
@@ -468,7 +607,7 @@ async function handleApi(req, res) {
     // Test 4: Count running playitd processes
     try {
       const { execSync } = require('child_process');
-      const ps = execSync('ps aux | grep playitd | grep -v grep', { encoding: 'utf8' }).trim();
+      const ps = execSync('ps aux | grep playitd | grep -v grep', { encoding: 'utf8', timeout: 5000 }).trim();
       const lines = ps.split('\n').filter(Boolean);
       results.playitd_process_count = lines.length;
       results.playitd_processes = lines.map(l => l.replace(/\s+/g, ' ').substring(0, 120));
@@ -633,6 +772,78 @@ echo "Return to HashGG and click Test Connection."
 `;
 }
 
+// Generate the VPS teardown script — removes everything buildSetupScript created:
+// the hashgg user (+ home and its authorized_keys), the sshd drop-in config, and
+// the firewall rules for every port HashGG opened (primary + additional miners).
+// Best-effort and idempotent (safe to re-run; safe if some pieces are already
+// gone). Mirror of buildSetupScript.
+function buildTeardownScript(ports) {
+  const portList = (Array.isArray(ports) ? ports : [ports]).join(' ');
+  return `#!/bin/bash
+# Best-effort cleanup — keep going even if individual steps fail.
+set -uo pipefail
+
+SSH_USER="hashgg"
+SSH_HOME="/home/hashgg"
+SSHD_CONF_DIR="/etc/ssh/sshd_config.d"
+CONF_FILE="$SSHD_CONF_DIR/hashgg.conf"
+STRATUM_PORTS="${portList}"
+
+echo "=== HashGG VPS Teardown ==="
+
+# --- Remove the sshd drop-in config ---
+if [ -f "$CONF_FILE" ]; then
+  rm -f "$CONF_FILE"
+  echo "Removed $CONF_FILE"
+else
+  echo "No HashGG sshd config found (already removed)"
+fi
+
+# --- Remove the hashgg user, its home, and authorized_keys ---
+if id "$SSH_USER" &>/dev/null; then
+  # Terminate any lingering sessions/processes owned by the user first
+  pkill -KILL -u "$SSH_USER" 2>/dev/null || true
+  userdel -r "$SSH_USER" 2>/dev/null || userdel "$SSH_USER" 2>/dev/null || true
+  echo "Removed user $SSH_USER"
+else
+  echo "User $SSH_USER not present (already removed)"
+fi
+rm -rf "$SSH_HOME" 2>/dev/null || true
+
+# --- Validate sshd config, then restart so the change takes effect ---
+if sshd -t 2>/tmp/sshd-test.log; then
+  echo "Restarting sshd..."
+  if systemctl list-units --type=service --all 2>/dev/null | grep -q "ssh\\.service"; then
+    systemctl restart ssh
+  elif systemctl list-units --type=service --all 2>/dev/null | grep -q "sshd\\.service"; then
+    systemctl restart sshd
+  else
+    service ssh restart 2>/dev/null || service sshd restart 2>/dev/null || true
+  fi
+else
+  echo "WARNING: sshd config test failed after removing HashGG config — NOT restarting sshd:"
+  cat /tmp/sshd-test.log
+fi
+
+# --- Close the firewall port(s) ---
+for PORT in $STRATUM_PORTS; do
+  echo "Closing port $PORT/tcp in firewall..."
+  if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+    ufw delete allow "$PORT/tcp" 2>/dev/null || true
+  elif command -v firewall-cmd &>/dev/null; then
+    firewall-cmd --permanent --remove-port="$PORT/tcp" --quiet 2>/dev/null || true
+  else
+    echo "(No managed firewall detected — if you opened port $PORT in your VPS provider firewall, remove it there.)"
+  fi
+done
+command -v firewall-cmd &>/dev/null && firewall-cmd --reload --quiet 2>/dev/null || true
+
+echo ""
+echo "=== Teardown complete! ==="
+echo "HashGG's access and configuration have been removed from this VPS."
+`;
+}
+
 // Test SSH authentication (non-forwarding) — returns { success, error }
 function testVpsSshAuth(s) {
   return new Promise((resolve) => {
@@ -675,6 +886,16 @@ function testVpsSshAuth(s) {
 
 // Startup
 function main() {
+  // Last-resort guards: this process supervises the tunnel children, so a stray
+  // rejection/exception must NOT take it down (that would orphan the tunnels and
+  // bounce the container). Log and keep running.
+  process.on('unhandledRejection', (err) => {
+    console.error(`[server] Unhandled rejection: ${err && err.stack ? err.stack : err}`);
+  });
+  process.on('uncaughtException', (err) => {
+    console.error(`[server] Uncaught exception: ${err && err.stack ? err.stack : err}`);
+  });
+
   // Load state (applies migration for pre-VPS installs)
   state.load();
 
@@ -682,7 +903,7 @@ function main() {
   const s = state.get();
   try {
     const { execSync } = require('child_process');
-    const configSecret = execSync(`yq e '.playit.secret_key // ""' ${CONFIG_FILE}`, { encoding: 'utf8' }).trim();
+    const configSecret = execSync(`yq e '.playit.secret_key // ""' ${CONFIG_FILE}`, { encoding: 'utf8', timeout: 5000 }).trim();
     if (configSecret && configSecret !== 'null' && configSecret !== s.playit_secret) {
       console.log('[server] Secret key provided via StartOS config');
       state.update({ playit_secret: configSecret, claim_status: 'completed', tunnel_mode: 'playit' });
@@ -694,15 +915,20 @@ function main() {
   const mode = state.get().tunnel_mode;
   console.log(`[server] Tunnel mode: ${mode || 'not set'}`);
 
-  const stratumPort = getStratumPort();
+  const listenPort = getListenPort();
 
   if (mode === 'playit' && state.get().playit_secret) {
     playitManager.start();
-    tunnelStatus.startPolling(stratumPort);
+    tunnelStatus.startPolling(listenPort);
   } else if (mode === 'vps') {
     if (state.get().vps_host && state.get().vps_ssh_private_key) {
       vpsManager.start();
     }
+  }
+
+  // Poll status/health of any additional miners (no-op until some exist).
+  if (mode === 'playit' || mode === 'vps') {
+    connections.startPolling();
   }
 
   // Watch for mode/claim changes driven from the UI:
@@ -718,7 +944,8 @@ function main() {
         && playitManager.status === 'stopped') {
       console.log('[server] Claim completed — starting playit agent');
       playitManager.start();
-      tunnelStatus.startPolling(stratumPort);
+      tunnelStatus.startPolling(listenPort);
+      connections.startPolling();
     }
   }, 1000);
 
@@ -736,6 +963,7 @@ function main() {
     try { playitManager.stop(); } catch (_) {}
     try { vpsManager.stop(); } catch (_) {}
     try { tunnelStatus.stopPolling(); } catch (_) {}
+    try { connections.stopPolling(); } catch (_) {}
     server.close(() => process.exit(0));
     // Failsafe: exit after 5s even if server.close hangs
     setTimeout(() => process.exit(0), 5000).unref();

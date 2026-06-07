@@ -89,9 +89,65 @@
         </div>
       </div>
 
+      <!-- Advanced: additional miners (hidden from the simple path) -->
+      <details id="advanced-miners" class="advanced-miners">
+        <summary>Advanced: additional miners</summary>
+        <div class="advanced-miners-body">
+          <p class="hint">Expose another stratum server through its own tunnel. The target must be reachable from HashGG (e.g. another miner backend on your network).</p>
+
+          <ul id="connections-list" class="connections-list"></ul>
+          <p id="connections-empty" class="hint" style="display:none;">No additional miners yet.</p>
+
+          <button id="btn-add-connection" class="btn btn-secondary btn-sm">+ Add another stratum</button>
+
+          <!-- Add form -->
+          <div id="connection-form" class="connection-form" style="display:none;">
+            <div class="form-group">
+              <label class="form-label" for="conn-name">Name</label>
+              <input type="text" id="conn-name" class="form-input" placeholder="e.g. Second miner" maxlength="40" autocomplete="off">
+            </div>
+            <div class="advanced-grid">
+              <div class="form-group">
+                <label class="form-label" for="conn-ip">Stratum IP / host</label>
+                <input type="text" id="conn-ip" class="form-input" placeholder="e.g. 192.168.1.50" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="conn-port">Stratum port</label>
+                <input type="number" id="conn-port" class="form-input form-input-sm" placeholder="3333" min="1" max="65535">
+              </div>
+            </div>
+            <div class="actions">
+              <button id="btn-conn-save" class="btn btn-primary btn-sm">Add</button>
+              <button id="btn-conn-cancel" class="btn btn-secondary btn-sm">Cancel</button>
+              <span id="conn-form-status" class="test-status"></span>
+            </div>
+          </div>
+
+          <!-- VPS firewall instruction (shown after adding a VPS connection) -->
+          <div id="conn-firewall-note" class="hint-box" style="display:none;">
+            <strong>Open this port on your VPS</strong> so miners can reach it. Run on your VPS as root:
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;">
+              <div class="code-hint" id="conn-firewall-cmd" style="flex:1;margin:0;"></div>
+              <button id="btn-copy-firewall" class="btn btn-secondary btn-sm">Copy</button>
+              <span id="copy-firewall-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
       <div class="actions">
         <button id="btn-restart-tunnel" class="btn btn-secondary" style="display:none;">Restart Tunnel</button>
         <button id="btn-reset" class="btn btn-danger">Reset Connection</button>
+      </div>
+
+      <!-- playit-only: clean up orphaned tunnels from previous installs -->
+      <div id="dashboard-cleanup-link" class="dashboard-footer" style="display:none;">
+        <a id="btn-open-cleanup" href="#" class="footer-link">Clean up old playit.gg tunnels…</a>
+      </div>
+
+      <!-- vps-only: remove HashGG's residual config from the VPS -->
+      <div id="dashboard-teardown-link" class="dashboard-footer" style="display:none;">
+        <a id="btn-open-teardown" href="#" class="footer-link">Remove HashGG from this VPS…</a>
       </div>
     </div>
 
@@ -256,6 +312,93 @@
       </div>
       <div class="actions">
         <button id="btn-vps-connecting-cancel" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Cleanup modal (playit.gg orphan tunnels) -->
+    <div id="cleanup-modal" class="modal-overlay" style="display:none;">
+      <div class="modal-card">
+        <h2>Clean up old playit.gg tunnels</h2>
+
+        <!-- Scanning -->
+        <div id="cleanup-loading" class="cleanup-section">
+          <div class="status-line">
+            <span class="dot dot-yellow"></span>
+            <span>Scanning your playit.gg account…</span>
+          </div>
+        </div>
+
+        <!-- Nothing to clean -->
+        <div id="cleanup-none" class="cleanup-section" style="display:none;">
+          <p>✅ No leftover HashGG tunnels found. Your playit.gg account is clean.</p>
+          <div class="actions">
+            <button id="btn-cleanup-close-none" class="btn btn-secondary">Close</button>
+          </div>
+        </div>
+
+        <!-- Found orphans -->
+        <div id="cleanup-found" class="cleanup-section" style="display:none;">
+          <p>Found <strong><span id="cleanup-count">0</span></strong> leftover HashGG tunnel(s) from previous installs. Deleting them frees up your playit.gg quota.</p>
+
+          <ul id="cleanup-list" class="cleanup-list"></ul>
+
+          <div class="warn-box">
+            ⚠️ Only continue if you use playit.gg <strong>only</strong> for HashGG. These could in theory be used for other things — but if HashGG is the only thing on this playit.gg account, deletion is safe. We only ever delete HashGG's own tunnels (<code>hashgg-stratum</code> / <code>hashgg-extra</code>) that aren't currently in use.
+          </div>
+
+          <div class="actions">
+            <button id="btn-cleanup-confirm" class="btn btn-danger">Delete <span id="cleanup-count-btn">0</span> tunnel(s)</button>
+            <button id="btn-cleanup-cancel" class="btn btn-secondary">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Deleting -->
+        <div id="cleanup-deleting" class="cleanup-section" style="display:none;">
+          <div class="status-line">
+            <span class="dot dot-yellow"></span>
+            <span>Deleting tunnels…</span>
+          </div>
+        </div>
+
+        <!-- Result -->
+        <div id="cleanup-result" class="cleanup-section" style="display:none;">
+          <p id="cleanup-result-text">Done.</p>
+          <div id="cleanup-agents-note" class="hint-box" style="display:none;">
+            <strong>One more (optional) step.</strong> HashGG can't delete playit.gg <em>agents</em> for you — only the playit.gg website can. You have about <strong><span id="cleanup-agent-count">0</span></strong> old HashGG agent(s) left over. Open
+            <a id="cleanup-agents-link" href="https://playit.gg/account/agents" target="_blank" rel="noopener">playit.gg/account/agents ↗</a>
+            and delete any named “HashGG …” you no longer use. This is safe if HashGG is the only thing you use playit.gg for.
+          </div>
+          <div class="actions">
+            <button id="btn-cleanup-close-result" class="btn btn-primary">Done</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Teardown modal (remove HashGG from the VPS) -->
+    <div id="teardown-modal" class="modal-overlay" style="display:none;">
+      <div class="modal-card">
+        <h2>Remove HashGG from this VPS</h2>
+
+        <p>This removes everything HashGG set up on your VPS — the <code>hashgg</code> user, its SSH access, the SSH config, and the firewall rule for your stratum port.</p>
+
+        <div class="warn-box">
+          ⚠️ Mining through this VPS will <strong>stop</strong>. Use this when you're switching VPS providers or no longer using HashGG. Run it on the VPS you no longer want HashGG to access.
+        </div>
+
+        <p>Connect to your VPS as <code>root</code> and paste this script:</p>
+        <div class="script-box">
+          <pre id="teardown-script-text" class="script-pre">Loading…</pre>
+        </div>
+        <div class="actions" style="margin-top:0.75rem;">
+          <button id="btn-copy-teardown" class="btn btn-secondary">Copy Script</button>
+          <span id="copy-teardown-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+        </div>
+        <p class="hint">Safe to re-run — every step is idempotent. Afterward you can use <strong>Reset Connection</strong> to clear HashGG's local VPS settings.</p>
+
+        <div class="actions" style="margin-top:1rem;">
+          <button id="btn-teardown-close" class="btn btn-primary">Done</button>
+        </div>
       </div>
     </div>
 

@@ -2,6 +2,10 @@ PKG_ID := $(shell yq -e ".id" manifest.yaml)
 PKG_VERSION := $(shell yq -e ".version" manifest.yaml)
 BUILD_DIR := builds/$(PKG_VERSION)
 TS_FILES := $(shell find . -name \*.ts -not -path './startos/*' -not -path './node_modules/*' )
+# All backend/frontend sources baked into the image. Listed explicitly so `make`
+# rebuilds when any of them change (the Dockerfile ADDs the whole dirs, but make
+# only re-runs when a named prerequisite is newer).
+APP_FILES := $(shell find app/backend app/frontend -type f)
 
 .DELETE_ON_ERROR:
 
@@ -40,14 +44,14 @@ x86:
 	@rm -f docker-images/aarch64.tar
 	ARCH=x86_64 $(MAKE)
 
-docker-images/aarch64.tar: Dockerfile docker_entrypoint.sh check-tunnel.sh check-datum.sh app/backend/server.js app/frontend/index.html icon.png INSTRUCTIONS.md
+docker-images/aarch64.tar: Dockerfile docker_entrypoint.sh check-tunnel.sh check-datum.sh $(APP_FILES) icon.png INSTRUCTIONS.md
 ifeq ($(ARCH),x86_64)
 else
 	mkdir -p docker-images
 	docker buildx build --tag start9/$(PKG_ID)/main:$(PKG_VERSION) --build-arg ARCH=aarch64 --build-arg PLATFORM=arm64 --platform=linux/arm64 -o type=docker,dest=docker-images/aarch64.tar .
 endif
 
-docker-images/x86_64.tar: Dockerfile docker_entrypoint.sh check-tunnel.sh check-datum.sh app/backend/server.js app/frontend/index.html icon.png INSTRUCTIONS.md
+docker-images/x86_64.tar: Dockerfile docker_entrypoint.sh check-tunnel.sh check-datum.sh $(APP_FILES) icon.png INSTRUCTIONS.md
 ifeq ($(ARCH),aarch64)
 else
 	mkdir -p docker-images

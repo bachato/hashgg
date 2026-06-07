@@ -26,6 +26,7 @@ class VpsManager extends EventEmitter {
     this.backoff = 2000;
     this.restartTimer = null;
     this.stableTimer = null;
+    this.reconfigureTimer = null;
     this.upSince = null;
   }
 
@@ -58,7 +59,16 @@ class VpsManager extends EventEmitter {
     const sshPort = String(s.vps_ssh_port || 22);
     const sshUser = s.vps_ssh_user || 'hashgg';
     const remotePort = String(s.vps_remote_port || 23335);
-    const forwardSpec = `0.0.0.0:${remotePort}:127.0.0.1:${LOCAL_STRATUM_PORT}`;
+    // Primary forward: VPS public port → our socat (which fronts Datum).
+    const forwards = [`0.0.0.0:${remotePort}:127.0.0.1:${LOCAL_STRATUM_PORT}`];
+    // Additional miners: one reverse forward each, to that connection's local socat
+    // bridge (127.0.0.1:listen_port) — same pattern as the primary. socat handles
+    // the hop to the user's actual stratum (IP or hostname).
+    for (const c of (s.extra_connections || [])) {
+      if (c.remote_port && c.listen_port) {
+        forwards.push(`0.0.0.0:${c.remote_port}:127.0.0.1:${c.listen_port}`);
+      }
+    }
     // IPv6 addresses require bracket notation in SSH user@host form
     const sshHost = s.vps_host.includes(':') ? `[${s.vps_host}]` : s.vps_host;
 
@@ -72,12 +82,11 @@ class VpsManager extends EventEmitter {
       '-o', 'ExitOnForwardFailure=yes',
       '-o', 'BatchMode=yes',
       '-i', KEY_FILE,
-      '-R', forwardSpec,
-      '-p', sshPort,
-      `${sshUser}@${sshHost}`,
     ];
+    for (const spec of forwards) args.push('-R', spec);
+    args.push('-p', sshPort, `${sshUser}@${sshHost}`);
 
-    console.log(`[vps] Connecting to ${sshUser}@${s.vps_host}:${sshPort} (forward ${forwardSpec})`);
+    console.log(`[vps] Connecting to ${sshUser}@${s.vps_host}:${sshPort} (forwards: ${forwards.join(', ')})`);
 
     const proc = spawn(SSH_BIN, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -145,16 +154,22 @@ class VpsManager extends EventEmitter {
   stop() {
     this._clearRestart();
     this._clearStable();
+    // A direct stop (disconnect/reset/shutdown) cancels any pending debounced
+    // reconfigure so we don't silently reconnect afterwards.
+    if (this.reconfigureTimer) { clearTimeout(this.reconfigureTimer); this.reconfigureTimer = null; }
     if (this.process) {
       this._setStatus('disconnected', null);
       const proc = this.process;
       this.process = null;
       this.generation++;
+      // Force-kill via the process HANDLE (not a raw PID) after 5s if it hasn't
+      // exited — killing by PID risks hitting a reused PID after a fast restart.
+      let exited = false;
+      proc.once('exit', () => { exited = true; });
       proc.kill('SIGTERM');
-      const pid = proc.pid;
       setTimeout(() => {
-        try { process.kill(pid, 'SIGKILL'); } catch (_) {}
-      }, 5000);
+        if (!exited) { try { proc.kill('SIGKILL'); } catch (_) {} }
+      }, 5000).unref();
     } else {
       this._setStatus('disconnected', null);
     }
@@ -163,8 +178,14 @@ class VpsManager extends EventEmitter {
   }
 
   restart() {
-    this.stop();
-    setTimeout(() => this.start(), 1000);
+    // Debounce: several connection add/removes in quick succession coalesce into a
+    // single stop→start, so the shared tunnel reconnects once instead of flapping.
+    if (this.reconfigureTimer) clearTimeout(this.reconfigureTimer);
+    this.reconfigureTimer = setTimeout(() => {
+      this.reconfigureTimer = null;
+      this.stop();
+      setTimeout(() => this.start(), 1000);
+    }, 600);
   }
 
   getUptime() {

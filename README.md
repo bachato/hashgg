@@ -130,6 +130,14 @@ The web UI binds to `127.0.0.1:3000` by default (the UI has no authentication �
 
 Open http://localhost:3000 in your browser. Pick **playit.gg** or **VPS**, follow the UI through the setup flow, copy the resulting public `stratum+tcp://host:port` endpoint, and point any miner at it.
 
+### Managing tunnels
+
+The dashboard has a few extras once you're connected:
+
+- **Additional miners (Advanced)** — expose a second (or more) stratum server through its own tunnel, in either mode. Enter the other server's IP/port; HashGG provisions a separate tunnel and shows its endpoint and live status.
+- **Clean up old playit.gg tunnels** (playit mode) — reinstalling creates fresh playit.gg agents/tunnels each time; this finds and deletes the leftover *tunnels* from previous installs (it never touches your active tunnel or non-HashGG tunnels), and points you to the playit dashboard to remove leftover *agents* (which only that site can delete).
+- **Remove HashGG from this VPS** (VPS mode) — a copy-paste teardown script that removes the `hashgg` user, SSH config, and firewall rule from a VPS you're decommissioning.
+
 ### Security notes
 
 - HashGG's web UI ships with **no authentication**. The default compose binding is loopback-only for that reason. Don't expose port 3000 to the LAN without a reverse proxy + auth in front.

@@ -1,6 +1,9 @@
 #!/bin/bash
 
 read DURATION
+# Guard against empty/non-numeric input from the health harness (would otherwise
+# make the integer test error out unpredictably).
+case "$DURATION" in (''|*[!0-9]*) DURATION=0 ;; esac
 if [ "$DURATION" -le 5000 ]; then
     exit 60
 else

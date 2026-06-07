@@ -61,12 +61,34 @@ For **Username/Worker**, follow the same conventions as your Datum Gateway setup
 
 **Password** can be left blank or set to `x`.
 
+# Additional Miners (Advanced)
+
+Want to expose a *second* stratum server — another miner backend on your network — through its own public tunnel? On the dashboard, expand **Advanced: additional miners**.
+
+1. Click **+ Add another stratum**.
+2. Enter a **Name**, the **Stratum IP / host**, and the **Stratum port** of the other server (it must be reachable from HashGG).
+3. Click **Add**. HashGG creates a second tunnel and shows its own public endpoint.
+   - **playit.gg:** the tunnel is created automatically (counts toward your playit.gg quota).
+   - **VPS:** HashGG picks a public port and shows a one-line firewall command to run on your VPS so miners can reach it.
+
+Each additional miner shows its own status (Active / Connecting / Stratum unreachable) and a Copy button for its endpoint. Use **Remove** to delete a connection and its tunnel.
+
+> **VPS mode note:** adding or removing an additional miner restarts the shared SSH tunnel, so the primary Datum endpoint briefly reconnects (a few seconds) — make changes when a short interruption is OK. In playit.gg mode the primary endpoint is unaffected.
+
+# Cleaning Up playit.gg (playit mode)
+
+Reinstalling HashGG creates a new playit.gg agent and tunnel each time, so old ones can pile up and exhaust your account quota. On the dashboard, click **Clean up old playit.gg tunnels…**. HashGG scans your account, lists leftover HashGG tunnels that aren't in use, and (after a confirmation) deletes them. It never touches your active tunnel or non-HashGG tunnels.
+
+playit.gg doesn't allow apps to delete *agents*, so HashGG names its agent **HashGG (…)** to make it identifiable and links you to [playit.gg/account/agents](https://playit.gg/account/agents) to remove any leftover agents yourself.
+
 # Resetting
 
 Click the **Reset** button in the dashboard to clear your configuration:
 
 - playit.gg mode: clears your secret key and tunnel configuration.
-- VPS mode: clears the VPS host, port, and SSH keypair (the remote `hashgg` user and `authorized_keys` entry are left in place — clean those up manually on the VPS if you no longer want HashGG to be able to connect).
+- VPS mode: clears the VPS host, port, and SSH keypair.
+
+To also remove HashGG's footprint *on the VPS* (the `hashgg` user, SSH config, and firewall rule) — for example when switching providers — use **Remove HashGG from this VPS…** on the dashboard before resetting. It gives you a copy-paste teardown script to run on the VPS as root.
 
 After a reset you'll be returned to the tunnel-choice screen.
 

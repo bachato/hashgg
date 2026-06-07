@@ -2,6 +2,7 @@
 
 const https = require('https');
 const state = require('./state');
+const playitCleanup = require('./playit-cleanup');
 
 const API_BASE = 'https://api.playit.gg';
 const POLL_INTERVAL_HEALTHY = 30000;
@@ -51,6 +52,27 @@ function apiRequest(method, path, secret, body) {
   });
 }
 
+// Point an existing tunnel at a local_ip:local_port (used to correct a primary
+// tunnel whose local_port drifted — e.g. an install that pre-dates the LISTEN_PORT
+// fix and still forwards to the Datum port instead of socat's port).
+async function updateTunnelLocalPort(tunnelId, localPort) {
+  const s = state.get();
+  if (!s.playit_secret || !tunnelId) return false;
+  try {
+    const res = await apiRequest('POST', '/tunnels/update', s.playit_secret, {
+      tunnel_id: tunnelId,
+      local_ip: '127.0.0.1',
+      local_port: localPort,
+      enabled: true,
+    });
+    console.log(`[tunnel] Corrected local address → 127.0.0.1:${localPort}: ${JSON.stringify(res.body)}`);
+    return res.body?.status === 'success';
+  } catch (err) {
+    console.error(`[tunnel] local_port correction error: ${err.message}`);
+    return false;
+  }
+}
+
 async function deleteTunnel(tunnelId) {
   const s = state.get();
   if (!s.playit_secret) return false;
@@ -87,7 +109,14 @@ async function fetchTunnelAllocation(tunnelId) {
     const tunnels = body.tunnels || [];
     if (tunnels.length === 0) return null;
 
-    const t = tunnels[0];
+    // /tunnels/list may be account-wide; pick the tunnel we actually asked for by
+    // id. Returning a different tunnel's allocation would mislabel an endpoint, so
+    // we return null (caller treats as not-ready) rather than guess.
+    const t = tunnels.find((x) => x.id === tunnelId);
+    if (!t) {
+      console.log(`[tunnel] /tunnels/list did not return tunnel ${tunnelId}`);
+      return null;
+    }
     // alloc is tagged: {status: "allocated", data: {static_ip4, port_start, ...}}
     const alloc = t.alloc;
     if (!alloc || alloc.status !== 'allocated' || !alloc.data) {
@@ -105,6 +134,21 @@ async function fetchTunnelAllocation(tunnelId) {
     };
   } catch (err) {
     console.error(`[tunnel] Allocation fetch error: ${err.message}`);
+    return null;
+  }
+}
+
+// Fetch just our agent_id (used when creating extra tunnels under the same agent).
+async function fetchAgentId() {
+  const s = state.get();
+  if (!s.playit_secret) return null;
+  try {
+    const res = await apiRequest('POST', '/agents/rundata', s.playit_secret);
+    if (res.status !== 200) return null;
+    const body = res.body?.data || res.body || {};
+    return body.agent_id || null;
+  } catch (err) {
+    console.error(`[tunnel] fetchAgentId error: ${err.message}`);
     return null;
   }
 }
@@ -130,10 +174,30 @@ async function fetchTunnelStatus() {
     }
 
     const agentId = body.agent_id || null;
-    const tunnels = body.tunnels || [];
-    if (tunnels.length > 0) {
-      const tunnel = tunnels[0];
 
+    // Once we know our agent_id, rename it to something identifiable in the playit
+    // dashboard (runs once; helps users spot HashGG agents when cleaning up). Fire
+    // and forget — never block status polling on it.
+    if (agentId) playitCleanup.renameAgentIfNeeded(agentId);
+
+    const allTunnels = body.tunnels || [];
+
+    // The agent may serve several tunnels (primary + additional miners). Select the
+    // PRIMARY one deliberately — never an extra — so the primary endpoint/health is
+    // tracked correctly. Prefer the remembered id, then a non-extra 'hashgg-stratum',
+    // then any non-extra tunnel.
+    // Exclude additional-miner tunnels both by recorded id and by name — the name
+    // backstop covers the brief window after an extra is created on the account but
+    // before its id is saved to state.extra_connections.
+    const extraIds = new Set((s.extra_connections || []).map((c) => c.tunnel_id).filter(Boolean));
+    const nonExtra = allTunnels.filter((t) => !extraIds.has(t.id) && t.name !== 'hashgg-extra');
+    const tunnel =
+      nonExtra.find((t) => t.id === s.tunnel_id) ||
+      nonExtra.find((t) => t.name === 'hashgg-stratum') ||
+      nonExtra[0] ||
+      null;
+
+    if (tunnel) {
       // Log full tunnel object once so we can see the structure
       if (!s.tunnel_id) {
         console.log(`[tunnel] Tunnel object: ${JSON.stringify(tunnel)}`);
@@ -149,6 +213,8 @@ async function fetchTunnelStatus() {
         await deleteTunnel(tunnel.id);
         state.update({ tunnel_id: null, public_endpoint: null });
         createAttempted = 0;
+        createSucceeded = false;
+        zeroTunnelsSince = 0;
         return { endpoint: null, tunnelId: null, tunnels: [], agentId };
       }
 
@@ -168,10 +234,11 @@ async function fetchTunnelStatus() {
         console.log(`[tunnel] Endpoint updated: ${endpoint}`);
       }
 
-      state.update({
-        tunnel_id: tunnelId,
-        public_endpoint: endpoint,
-      });
+      // Only persist when something actually changed — avoids rewriting the whole
+      // state file (incl. secrets) on every poll in the steady state.
+      if (tunnelId !== s.tunnel_id || endpoint !== s.public_endpoint) {
+        state.update({ tunnel_id: tunnelId, public_endpoint: endpoint });
+      }
 
       return { endpoint, tunnelId, tunnel };
     }
@@ -184,7 +251,12 @@ async function fetchTunnelStatus() {
   }
 }
 
-async function createTunnel(localPort, agentId) {
+// Create a playit tunnel. opts:
+//   name    — tunnel name (default 'hashgg-stratum' for the primary)
+//   localIp — where playitd forwards (default '127.0.0.1' → our socat)
+//   isExtra — true for additional-miner tunnels; keeps the primary create-retry
+//             counters untouched so an extra never disturbs primary provisioning.
+async function createTunnel(localPort, agentId, opts = {}) {
   const s = state.get();
   if (!s.playit_secret) return null;
   if (!agentId) {
@@ -192,11 +264,15 @@ async function createTunnel(localPort, agentId) {
     return null;
   }
 
+  const name = opts.name || 'hashgg-stratum';
+  const localIp = opts.localIp || '127.0.0.1';
+  const isExtra = !!opts.isExtra;
+
   // V1 API schema (as of 2025): uses "protocol" + "endpoint" (not "ports" + "alloc").
   // For raw TCP: protocol.type = "raw-ports" with details {port_type, port_count, software_description}.
   // Endpoint is required — use region "global" for automatic allocation.
   const body = {
-    name: 'hashgg-stratum',
+    name,
     protocol: {
       type: 'raw-ports',
       details: { port_type: 'tcp', port_count: 1, software_description: 'Bitcoin mining stratum proxy' },
@@ -236,22 +312,23 @@ async function createTunnel(localPort, agentId) {
     try { parsed = JSON.parse(responseBody); } catch (e) { parsed = responseBody; }
 
     if (parsed?.status === 'success') {
-      console.log('[tunnel] Tunnel created successfully');
-      createSucceeded = true;
+      console.log(`[tunnel] Tunnel "${name}" created successfully`);
+      if (!isExtra) createSucceeded = true;
 
-      // Set local_port so playitd forwards to socat (port 23335), not the auto-assigned port.
+      // Point playitd at the right backend: the primary forwards to our socat
+      // (127.0.0.1:localPort); an extra forwards straight to the user's stratum.
       const tunnelId = parsed.data?.id;
       if (tunnelId) {
         try {
           const updateRes = await apiRequest('POST', '/tunnels/update', s.playit_secret, {
             tunnel_id: tunnelId,
-            local_ip: '127.0.0.1',
+            local_ip: localIp,
             local_port: localPort,
             enabled: true,
           });
-          console.log(`[tunnel] Updated local_port to ${localPort}: ${JSON.stringify(updateRes.body)}`);
+          console.log(`[tunnel] Updated ${name} → ${localIp}:${localPort}: ${JSON.stringify(updateRes.body)}`);
         } catch (err) {
-          console.error(`[tunnel] Failed to update local_port: ${err.message}`);
+          console.error(`[tunnel] Failed to update local address: ${err.message}`);
         }
       }
 
@@ -264,7 +341,7 @@ async function createTunnel(localPort, agentId) {
     if (errStr && errStr.includes('RequiresPlayitPremium')) {
       console.error('[tunnel] *** playit.gg Premium required ***');
       console.error('[tunnel] Upgrade at https://playit.gg/account/premium');
-      createAttempted = MAX_CREATE_ATTEMPTS;
+      if (!isExtra) createAttempted = MAX_CREATE_ATTEMPTS;
       return null;
     }
 
@@ -278,7 +355,11 @@ async function createTunnel(localPort, agentId) {
 
 let createAttempted = 0;
 let createSucceeded = false;
+let lastBurstAt = 0;        // when the current create-attempt burst began (ms)
+let zeroTunnelsSince = 0;   // when we first saw 0 tunnels after a success (ms)
 const MAX_CREATE_ATTEMPTS = 3;
+const CREATE_COOLDOWN_MS = 5 * 60 * 1000;   // a maxed-out burst retries after this
+const PROPAGATION_MS = 90 * 1000;           // grace before treating 0-tunnels as "deleted"
 
 function startPolling(localPort) {
   stopPolling();
@@ -290,15 +371,54 @@ async function poll(localPort) {
 
   let interval = POLL_INTERVAL_HEALTHY;
 
+  // Self-correct an existing primary tunnel whose local_port doesn't match where
+  // socat is actually listening (localPort). This fixes installs created before the
+  // LISTEN_PORT fix, where the tunnel forwarded to the Datum port and miners got
+  // "connection refused". createTunnel() already sets the right port on new tunnels.
+  if (result && result.tunnelId && result.tunnel
+      && result.tunnel.local_port && result.tunnel.local_port !== localPort) {
+    console.log(`[tunnel] Primary tunnel local_port ${result.tunnel.local_port} != socat port ${localPort} — correcting`);
+    await updateTunnelLocalPort(result.tunnelId, localPort);
+  }
+
   if (!result || !result.endpoint) {
     interval = POLL_INTERVAL_RECOVERING;
 
-    // If we have a secret but no tunnels, try to create one (limited retries)
-    if (result && result.tunnels && result.tunnels.length === 0 && !createSucceeded && createAttempted < MAX_CREATE_ATTEMPTS) {
-      createAttempted++;
-      console.log(`[tunnel] No tunnels found, creating one (attempt ${createAttempted}/${MAX_CREATE_ATTEMPTS})...`);
-      await createTunnel(localPort, result.agentId);
+    const noTunnels = result && Array.isArray(result.tunnels) && result.tunnels.length === 0;
+    if (noTunnels) {
+      const now = Date.now();
+
+      // A tunnel we created earlier has vanished (deleted in the playit dashboard,
+      // say). After a grace window — so we don't race API propagation right after
+      // creating — clear the "succeeded" latch so we recreate it.
+      if (createSucceeded) {
+        if (!zeroTunnelsSince) {
+          zeroTunnelsSince = now;
+        } else if (now - zeroTunnelsSince > PROPAGATION_MS) {
+          console.log('[tunnel] Previously-created tunnel is gone — allowing recreate');
+          createSucceeded = false;
+          createAttempted = 0;
+        }
+      }
+
+      // A maxed-out attempt burst retries after a cooldown — recovers from a
+      // transient API outage, or a Premium upgrade purchased after hitting the wall.
+      if (createAttempted >= MAX_CREATE_ATTEMPTS && now - lastBurstAt > CREATE_COOLDOWN_MS) {
+        console.log('[tunnel] Create cooldown elapsed — retrying tunnel creation');
+        createAttempted = 0;
+      }
+
+      if (!createSucceeded && createAttempted < MAX_CREATE_ATTEMPTS) {
+        if (createAttempted === 0) lastBurstAt = now;
+        createAttempted++;
+        console.log(`[tunnel] No tunnels found, creating one (attempt ${createAttempted}/${MAX_CREATE_ATTEMPTS})...`);
+        await createTunnel(localPort, result.agentId);
+      }
+    } else {
+      zeroTunnelsSince = 0; // tunnels present (or status unknown) — reset vanish timer
     }
+  } else {
+    zeroTunnelsSince = 0;
   }
 
   pollTimer = setTimeout(() => poll(localPort), interval);
@@ -311,4 +431,12 @@ function stopPolling() {
   }
 }
 
-module.exports = { fetchTunnelStatus, createTunnel, startPolling, stopPolling };
+module.exports = {
+  fetchTunnelStatus,
+  createTunnel,
+  deleteTunnel,
+  fetchTunnelAllocation,
+  fetchAgentId,
+  startPolling,
+  stopPolling,
+};
