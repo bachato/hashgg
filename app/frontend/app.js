@@ -307,10 +307,12 @@ function updateVpsUI(status) {
     }
     return;
   }
-  // If we have a host and aren't in setup flow, show dashboard with disconnected state
-  if (status.host && currentScreen === 'dashboard') {
-    updateDashboard(status, 'vps');
-  }
+  // Configured but not connected (connecting / error / disconnected) and not in the
+  // setup flow — always land on the dashboard so the live status and the
+  // Restart/Reset controls are visible (otherwise the page renders blank on load
+  // whenever the tunnel is down, e.g. a changed VPS host key).
+  showScreen('dashboard');
+  updateDashboard(status, 'vps');
 }
 
 // ─── Shared dashboard ─────────────────────────────────────────────────────────
