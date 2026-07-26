@@ -135,6 +135,134 @@
         </div>
       </details>
 
+      <!-- Bitcoin clearnet inbound. Hidden until a node is detected. -->
+      <details id="advanced-btc-p2p" class="advanced-miners" style="display:none;">
+        <summary>Make your Bitcoin node reachable <span id="btc-summary-note" class="btc-summary-note"></span></summary>
+        <div class="advanced-miners-body">
+
+          <!-- STATE A: not yet enabled — what this actually means -->
+          <div id="btc-intro">
+            <p><strong>What this does.</strong> Other Bitcoin nodes will be able to
+            connect to your node through your VPS. Today your node can only reach
+            out; nothing can reach in.</p>
+
+            <ul class="btc-facts">
+              <li><strong>Your home IP stays private.</strong> Peers connect to your VPS, not to you.</li>
+              <li><strong>This does not make your node anonymous.</strong> Connections your
+                  node makes <em>out</em> still leave from your home internet connection,
+                  exactly as they do now.</li>
+              <li><strong>Expect roughly 100–300&nbsp;GB a month of extra VPS traffic</strong>,
+                  sometimes more when another node is syncing from you. Check your VPS
+                  plan's allowance — you can cap it, see below.</li>
+              <li><strong>Incoming peers all look like one local connection</strong> to your
+                  node. That is exactly how inbound Tor already works, and is normal.</li>
+              <li><strong>One manual step, once.</strong> You will paste a single line into
+                  your Bitcoin app's settings. We give you the line and a Copy button.</li>
+              <li><strong>Before you uninstall HashGG or change VPS</strong>, turn this off and
+                  remove that line — otherwise your node keeps advertising a dead address.</li>
+            </ul>
+
+            <div class="actions">
+              <button id="btn-btc-enable" class="btn btn-primary">Make my node reachable</button>
+              <span id="btc-enable-status" class="test-status"></span>
+            </div>
+          </div>
+
+          <!-- STATE B: enabled — the checklist -->
+          <div id="btc-checklist" style="display:none;">
+            <ol class="btc-steps">
+              <li>
+                <div class="btc-step-head">
+                  <span id="btc-dot-tunnel" class="dot dot-gray"></span>
+                  <strong>Tunnel</strong>
+                  <span id="btc-tunnel-text" class="status-value">—</span>
+                </div>
+                <p id="btc-tunnel-err" class="btc-err" style="display:none;"></p>
+              </li>
+
+              <li>
+                <div class="btc-step-head"><strong>Open the port on your VPS</strong></div>
+                <p class="hint">Run this on your VPS as root. Skip it if you already re-ran the setup script.</p>
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                  <div class="code-hint" id="btc-firewall-cmd" style="flex:1;margin:0;"></div>
+                  <button id="btn-btc-copy-firewall" class="btn btn-secondary btn-sm">Copy</button>
+                  <span id="btc-copy-fw-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+                </div>
+                <p class="hint">If your provider has its own firewall panel, allow the port there too.</p>
+              </li>
+
+              <li>
+                <div class="btc-step-head"><strong>Tell your node to advertise it</strong></div>
+                <p id="btc-where-to-paste" class="hint"></p>
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                  <div class="code-hint" id="btc-externalip-line" style="flex:1;margin:0;"></div>
+                  <button id="btn-btc-copy-line" class="btn btn-secondary btn-sm">Copy</button>
+                  <span id="btc-copy-line-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+                </div>
+                <p class="hint">Saving restarts your node briefly.</p>
+                <div class="actions">
+                  <button id="btn-btc-ack" class="btn btn-secondary btn-sm">I've added the line</button>
+                  <span id="btc-ack-state" class="test-status"></span>
+                </div>
+              </li>
+
+              <li>
+                <div class="btc-step-head"><strong>Check it worked</strong></div>
+                <div class="actions">
+                  <button id="btn-btc-verify" class="btn btn-primary btn-sm">Verify</button>
+                  <span id="btc-verify-status" class="test-status"></span>
+                </div>
+                <p id="btc-advertising" class="hint" style="display:none;"></p>
+              </li>
+            </ol>
+
+            <div id="btc-stale-warning" class="hint-box" style="display:none;"></div>
+
+            <details class="btc-sub">
+              <summary>Limit your upload (recommended)</summary>
+              <p class="hint">A reachable node can serve a lot of history. If your VPS has a
+              transfer cap, set <code>maxuploadtarget</code> in your Bitcoin app — for example
+              <code>maxuploadtarget=500G</code>. It does not throttle blocks newer than a week,
+              or whitelisted peers, so leave headroom.</p>
+            </details>
+
+            <details class="btc-sub">
+              <summary>Advanced</summary>
+              <div class="advanced-grid">
+                <div class="form-group">
+                  <label class="form-label" for="btc-remote-port">Public port on the VPS</label>
+                  <input type="number" id="btc-remote-port" class="form-input form-input-sm" min="1024" max="65535" placeholder="8333">
+                </div>
+              </div>
+              <p class="hint">My Bitcoin node is somewhere else — enter its address to use a
+              node on another machine. Use its normal P2P port, not a whitelisted-peer port.</p>
+              <div class="advanced-grid">
+                <div class="form-group">
+                  <label class="form-label" for="btc-target-host">Node address</label>
+                  <input type="text" id="btc-target-host" class="form-input" placeholder="e.g. 192.168.1.20" autocomplete="off" spellcheck="false">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="btc-target-port">Node port</label>
+                  <input type="number" id="btc-target-port" class="form-input form-input-sm" min="1" max="65535" placeholder="8333">
+                </div>
+              </div>
+              <div class="actions">
+                <button id="btn-btc-apply-advanced" class="btn btn-secondary btn-sm">Apply</button>
+                <span id="btc-advanced-status" class="test-status"></span>
+              </div>
+            </details>
+
+            <div class="actions">
+              <button id="btn-btc-disable" class="btn btn-danger btn-sm">Stop accepting connections</button>
+            </div>
+            <div id="btc-cleanup-note" class="hint-box" style="display:none;"></div>
+          </div>
+
+          <!-- STATE C: platform can't do this, or does it natively -->
+          <div id="btc-guidance" style="display:none;"></div>
+        </div>
+      </details>
+
       <div class="actions">
         <button id="btn-restart-tunnel" class="btn btn-secondary" style="display:none;">Restart Tunnel</button>
         <button id="btn-reset" class="btn btn-danger">Reset Connection</button>

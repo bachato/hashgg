@@ -38,6 +38,37 @@ const els = {
   statusDatum: document.getElementById('status-datum'),
   statusAgent: document.getElementById('status-agent'),
   btnRestartTunnel: document.getElementById('btn-restart-tunnel'),
+  // Bitcoin clearnet inbound
+  btcSection: document.getElementById('advanced-btc-p2p'),
+  btcSummaryNote: document.getElementById('btc-summary-note'),
+  btcIntro: document.getElementById('btc-intro'),
+  btcChecklist: document.getElementById('btc-checklist'),
+  btcGuidance: document.getElementById('btc-guidance'),
+  btnBtcEnable: document.getElementById('btn-btc-enable'),
+  btcEnableStatus: document.getElementById('btc-enable-status'),
+  btcDotTunnel: document.getElementById('btc-dot-tunnel'),
+  btcTunnelText: document.getElementById('btc-tunnel-text'),
+  btcTunnelErr: document.getElementById('btc-tunnel-err'),
+  btcFirewallCmd: document.getElementById('btc-firewall-cmd'),
+  btnBtcCopyFirewall: document.getElementById('btn-btc-copy-firewall'),
+  btcCopyFwFeedback: document.getElementById('btc-copy-fw-feedback'),
+  btcWhereToPaste: document.getElementById('btc-where-to-paste'),
+  btcExternalipLine: document.getElementById('btc-externalip-line'),
+  btnBtcCopyLine: document.getElementById('btn-btc-copy-line'),
+  btcCopyLineFeedback: document.getElementById('btc-copy-line-feedback'),
+  btnBtcAck: document.getElementById('btn-btc-ack'),
+  btcAckState: document.getElementById('btc-ack-state'),
+  btnBtcVerify: document.getElementById('btn-btc-verify'),
+  btcVerifyStatus: document.getElementById('btc-verify-status'),
+  btcAdvertising: document.getElementById('btc-advertising'),
+  btcStaleWarning: document.getElementById('btc-stale-warning'),
+  btcRemotePort: document.getElementById('btc-remote-port'),
+  btcTargetHost: document.getElementById('btc-target-host'),
+  btcTargetPort: document.getElementById('btc-target-port'),
+  btnBtcApplyAdvanced: document.getElementById('btn-btc-apply-advanced'),
+  btcAdvancedStatus: document.getElementById('btc-advanced-status'),
+  btnBtcDisable: document.getElementById('btn-btc-disable'),
+  btcCleanupNote: document.getElementById('btc-cleanup-note'),
   btnReset: document.getElementById('btn-reset'),
   // Cleanup (playit orphan tunnels)
   dashboardCleanupLink: document.getElementById('dashboard-cleanup-link'),
@@ -226,7 +257,7 @@ async function pollStatus() {
     }
 
     // Refresh additional-miner statuses while the dashboard is visible.
-    if (currentScreen === 'dashboard') refreshConnections();
+    if (currentScreen === 'dashboard') { refreshConnections(); refreshBtcStatus(); }
   } catch (err) {
     console.error('Poll error:', err);
   }
@@ -874,3 +905,268 @@ els.btnCopyFirewall.addEventListener('click', () => {
 // ─── Initialize ───────────────────────────────────────────────────────────────
 
 startPolling();
+
+// ---------------------------------------------------------------------------
+// Bitcoin clearnet inbound
+// ---------------------------------------------------------------------------
+
+let btcState = null;
+let btcBusy = false;
+let lastBtcSig = null;
+
+// Where the externalip line has to go, per platform. Named steps rather than a
+// generic "edit bitcoin.conf", because the whole point of the feature is that
+// the user does not have to know where that file lives.
+const BTC_PASTE_INSTRUCTIONS = {
+  umbrel: 'Open the <strong>Bitcoin Knots</strong> app → <strong>Settings</strong> → '
+        + '<strong>Advanced</strong> → <strong>Custom configuration</strong>, paste the line '
+        + 'on its own line, and Save.',
+  docker: 'Add the line to your <code>bitcoin.conf</code> and restart Bitcoin.',
+};
+
+async function refreshBtcStatus() {
+  try {
+    btcState = await api('GET', '/btc/status');
+    renderBtc(btcState);
+  } catch (_) { /* non-fatal — the section just stops updating */ }
+}
+
+function renderBtc(d) {
+  if (!d) return;
+
+  // Nothing to show unless we found a node (or the platform needs to explain
+  // itself). Keeps the dashboard unchanged for everyone else.
+  const show = !!d.detected || d.capability !== 'full';
+  els.btcSection.style.display = show ? 'block' : 'none';
+  if (!show) return;
+
+  // Cheap redraw guard: the 3s poll must not wipe "Copied!" feedback or swap
+  // the DOM out from under a click.
+  const sig = JSON.stringify([d.capability, d.enabled, d.tunnel_status, d.last_error,
+    d.public_endpoint, d.acked, d.verified_at, d.advertising, d.inbound_peers,
+    d.advertised_stale, d.detected && d.detected.user_agent]);
+  if (sig === lastBtcSig) return;
+  lastBtcSig = sig;
+
+  if (d.capability !== 'full') { renderBtcGuidance(d); return; }
+  els.btcGuidance.style.display = 'none';
+
+  if (!d.enabled) {
+    els.btcIntro.style.display = 'block';
+    els.btcChecklist.style.display = 'none';
+    els.btcSummaryNote.textContent = d.detected
+      ? `· ${shortAgent(d.detected.user_agent)} found, not reachable from the internet`
+      : '';
+    return;
+  }
+
+  els.btcIntro.style.display = 'none';
+  els.btcChecklist.style.display = 'block';
+
+  // Summary line — what the user sees without expanding.
+  if (d.verified_at) {
+    const peers = (typeof d.inbound_peers === 'number') ? ` · ${d.inbound_peers} inbound` : '';
+    els.btcSummaryNote.textContent = `· reachable at ${d.public_endpoint}${peers}`;
+  } else {
+    els.btcSummaryNote.textContent = `· ${d.tunnel_status}`;
+  }
+
+  // Step 1 — tunnel
+  const TS = {
+    connected: ['dot-green', 'Connected'],
+    connecting: ['dot-yellow', 'Connecting…'],
+    error: ['dot-red', 'Problem'],
+    disconnected: ['dot-gray', 'Not connected'],
+  };
+  const [dot, text] = TS[d.tunnel_status] || ['dot-gray', d.tunnel_status || '—'];
+  els.btcDotTunnel.className = `dot ${dot}`;
+  els.btcTunnelText.textContent = text;
+  els.btcTunnelErr.style.display = d.last_error ? 'block' : 'none';
+  els.btcTunnelErr.textContent = d.last_error || '';
+
+  // Step 2 — firewall one-liner
+  const port = d.remote_port || 8333;
+  els.btcFirewallCmd.textContent =
+    `ufw allow ${port}/tcp comment "HashGG bitcoin p2p"   # or: firewall-cmd --permanent --add-port=${port}/tcp && firewall-cmd --reload`;
+
+  // Step 3 — the line, and where it goes
+  els.btcWhereToPaste.innerHTML = BTC_PASTE_INSTRUCTIONS[d.platform] || BTC_PASTE_INSTRUCTIONS.docker;
+  els.btcExternalipLine.textContent = d.public_endpoint ? `externalip=${d.public_endpoint}` : '—';
+  els.btcAckState.textContent = d.acked ? 'Added' : '';
+  els.btcAckState.className = 'test-status' + (d.acked ? ' ok' : '');
+
+  // Step 4 — verification, and the advertisement rung where we can see it
+  if (d.verified_at) {
+    els.btcVerifyStatus.textContent = `Reachable — ${shortAgent(d.verified_agent)} answered`;
+    els.btcVerifyStatus.className = 'test-status ok';
+  }
+  if (d.advertising === true) {
+    els.btcAdvertising.style.display = 'block';
+    els.btcAdvertising.innerHTML = `✓ Your node is advertising <code>${d.public_endpoint}</code>.`;
+  } else if (d.advertising === false) {
+    els.btcAdvertising.style.display = 'block';
+    els.btcAdvertising.innerHTML = '⚠ The tunnel works, but your node is not advertising that '
+      + 'address yet. Check step 3 saved, and that your node restarted.';
+  } else {
+    // null means we cannot see it — say nothing rather than imply a problem.
+    els.btcAdvertising.style.display = 'none';
+  }
+
+  // The advertised address no longer matches the tunnel.
+  if (d.advertised_stale) {
+    els.btcStaleWarning.style.display = 'block';
+    els.btcStaleWarning.innerHTML = '<strong>Your VPS address changed.</strong> The line in your '
+      + 'Bitcoin app still points at the old one — update it with the line above.';
+  } else {
+    els.btcStaleWarning.style.display = 'none';
+  }
+}
+
+function renderBtcGuidance(d) {
+  els.btcIntro.style.display = 'none';
+  els.btcChecklist.style.display = 'none';
+  els.btcGuidance.style.display = 'block';
+  els.btcSummaryNote.textContent = d.detected ? `· ${shortAgent(d.detected.user_agent)} found` : '';
+
+  if (d.capability === 'guided') {
+    els.btcGuidance.innerHTML = `
+      <p><strong>StartOS can do this itself, and does it better than HashGG could.</strong>
+      It preserves each peer's real IP address, and configures your node for you.</p>
+      <p>You will need a second VPS running <strong>StartTunnel</strong> — separate from the one
+      carrying your mining tunnel, because StartTunnel takes over the firewall on whatever
+      machine it runs on.</p>
+      <ol class="btc-steps">
+        <li>Install StartTunnel on a fresh Debian&nbsp;12-or-newer VPS with a dedicated public IPv4.</li>
+        <li>In StartOS: <strong>System → Gateways → Add</strong>, and paste the WireGuard config it gives you.</li>
+        <li>In <strong>Bitcoin Knots → Interfaces → Peer</strong>, switch on the gateway's public IP.</li>
+      </ol>
+      <p class="hint">StartOS then opens the port and tells your node to advertise it —
+      no config line to paste.</p>
+      <p class="hint"><strong>No VPS needed if your ISP doesn't use CGNAT:</strong> forward the port
+      on your router and switch on the router gateway's public IP instead. That exposes your home
+      IP, which the VPS route avoids — a real trade, not a worse option.</p>`;
+  } else {
+    els.btcGuidance.innerHTML = `
+      <p>On this version of StartOS, the Bitcoin package rewrites its configuration every time it
+      starts and only ever advertises its Tor address. There is no way to tell it about a public
+      address, so HashGG cannot help here.</p>
+      <p class="hint">Upgrading to StartOS 0.4.0 enables this. If your Bitcoin node runs on a
+      different machine, you can point HashGG at it instead.</p>`;
+  }
+}
+
+// "/Satoshi:29.3.0/Knots:20260508/" -> "Knots 29.3.0"
+function shortAgent(ua) {
+  if (!ua) return 'your node';
+  const knots = /Knots:/.test(ua);
+  const ver = (ua.match(/Satoshi:([0-9.]+)/) || [])[1];
+  return (knots ? 'Knots' : 'Bitcoin Core') + (ver ? ` ${ver}` : '');
+}
+
+function setBtcStatus(el, msg, kind) {
+  el.textContent = msg;
+  el.className = 'test-status' + (kind ? ` ${kind}` : '');
+}
+
+async function btcEnable() {
+  if (btcBusy) return;
+  btcBusy = true;
+  setBtcStatus(els.btcEnableStatus, 'Setting up…', '');
+  try {
+    await api('POST', '/btc/enable', {});
+    lastBtcSig = null;
+    await refreshBtcStatus();
+    setBtcStatus(els.btcEnableStatus, '', '');
+  } catch (err) {
+    setBtcStatus(els.btcEnableStatus, err.message, 'err');
+  } finally { btcBusy = false; }
+}
+
+async function btcDisable() {
+  if (btcBusy) return;
+  btcBusy = true;
+  try {
+    const r = await api('POST', '/btc/disable', {});
+    const line = r.cleanup && r.cleanup.externalip_line;
+    els.btcCleanupNote.style.display = 'block';
+    els.btcCleanupNote.innerHTML = '<strong>Two things left to tidy up.</strong>'
+      + (line ? `<br>1. Remove <code>${line}</code> from your Bitcoin app's configuration —
+           otherwise your node keeps advertising an address that no longer works.` : '')
+      + `<br>${line ? '2.' : '1.'} Optional: close the port on your VPS with
+           <code>ufw delete allow ${(r.cleanup && r.cleanup.remote_port) || 8333}/tcp</code>.`;
+    lastBtcSig = null;
+    await refreshBtcStatus();
+  } catch (err) {
+    showError(err.message);
+  } finally { btcBusy = false; }
+}
+
+async function btcVerify() {
+  if (btcBusy) return;
+  btcBusy = true;
+  setBtcStatus(els.btcVerifyStatus, 'Checking from the internet…', '');
+  try {
+    const r = await api('POST', '/btc/verify', {});
+    if (r.ok) {
+      setBtcStatus(els.btcVerifyStatus,
+        `Reachable — ${shortAgent(r.user_agent)} answered`, 'ok');
+      if (r.warning) setBtcStatus(els.btcVerifyStatus, r.warning, 'err');
+    } else {
+      setBtcStatus(els.btcVerifyStatus, verifyHint(r.error), 'err');
+    }
+    lastBtcSig = null;
+    await refreshBtcStatus();
+  } catch (err) {
+    setBtcStatus(els.btcVerifyStatus, err.message, 'err');
+  } finally { btcBusy = false; }
+}
+
+// A raw socket error tells the user nothing about which link broke. Name the
+// most likely cause for the two that actually happen.
+function verifyHint(raw) {
+  if (/timed out/i.test(raw || '')) {
+    return "No answer. The port is probably still closed on your VPS — check step 2, "
+         + "and your provider's own firewall panel.";
+  }
+  if (/ECONNREFUSED|refused/i.test(raw || '')) {
+    return 'Your VPS refused the connection — the tunnel may not be up yet. Give it a moment.';
+  }
+  return raw || 'Could not reach your node from the internet.';
+}
+
+async function btcAck() {
+  try {
+    await api('POST', '/btc/ack', {});
+    lastBtcSig = null;
+    await refreshBtcStatus();
+  } catch (err) { showError(err.message); }
+}
+
+async function btcApplyAdvanced() {
+  if (btcBusy) return;
+  btcBusy = true;
+  setBtcStatus(els.btcAdvancedStatus, 'Applying…', '');
+  const body = {};
+  const rp = parseInt(els.btcRemotePort.value, 10);
+  if (rp) body.remote_port = rp;
+  const th = els.btcTargetHost.value.trim();
+  if (th) { body.target_host = th; body.target_port = parseInt(els.btcTargetPort.value, 10) || 8333; }
+  try {
+    await api('POST', '/btc/enable', body);
+    setBtcStatus(els.btcAdvancedStatus, 'Applied', 'ok');
+    lastBtcSig = null;
+    await refreshBtcStatus();
+  } catch (err) {
+    setBtcStatus(els.btcAdvancedStatus, err.message, 'err');
+  } finally { btcBusy = false; }
+}
+
+els.btnBtcEnable.addEventListener('click', btcEnable);
+els.btnBtcDisable.addEventListener('click', btcDisable);
+els.btnBtcVerify.addEventListener('click', btcVerify);
+els.btnBtcAck.addEventListener('click', btcAck);
+els.btnBtcApplyAdvanced.addEventListener('click', btcApplyAdvanced);
+els.btnBtcCopyFirewall.addEventListener('click', () =>
+  copyText(els.btcFirewallCmd.textContent, els.btcCopyFwFeedback, els.btnBtcCopyFirewall));
+els.btnBtcCopyLine.addEventListener('click', () =>
+  copyText(els.btcExternalipLine.textContent, els.btcCopyLineFeedback, els.btnBtcCopyLine));
