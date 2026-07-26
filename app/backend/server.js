@@ -74,8 +74,14 @@ function detectPlatform() {
   if (explicit) return explicit;
   // Inference fallback for installs that predate the env var.
   const datumHost = process.env.DATUM_HOST || '';
+  // `.startos` is only ever set explicitly by the 0.4.0 package, so it is proof.
   if (datumHost.endsWith('.startos')) return 'startos-0.4';
-  if (datumHost.endsWith('.embassy') || fs.existsSync(CONFIG_FILE)) return 'startos-0.3';
+  // `.embassy` is NOT proof: `datum.embassy` is the entrypoint's default, so it
+  // is what a plain `docker run` with no DATUM_HOST gets. Keying off it would
+  // classify every such install as 0.3.5.1 and withdraw the feature from a
+  // platform that fully supports it. The StartOS config file is the real
+  // marker — verified present on a live 0.3.5.1 install.
+  if (fs.existsSync(CONFIG_FILE)) return 'startos-0.3';
   return 'docker';
 }
 
@@ -253,7 +259,7 @@ async function handleApi(req, res) {
     // describe it — the user still has to remove the line from their node.
     const sBefore = state.get();
     const btcCleanup = sBefore.btc_p2p_acked && sBefore.btc_p2p_advertised_for_host
-      ? { externalip_line: `externalip=${sBefore.btc_p2p_advertised_for_host}:${sBefore.btc_p2p_remote_port || 8333}` }
+      ? { externalip_line: `externalip=${sBefore.btc_p2p_advertised_for_host}:${sBefore.btc_p2p_advertised_port || 8333}` }
       : null;
     btcP2pManager.stop();
     tunnelStatus.stopPolling();
@@ -351,10 +357,13 @@ async function handleApi(req, res) {
       public_endpoint: (s.btc_p2p_vps_host && s.btc_p2p_enabled && isValidHost(s.btc_p2p_vps_host))
         ? `${s.btc_p2p_vps_host}:${s.btc_p2p_remote_port || 8333}` : null,
       acked: !!s.btc_p2p_acked,
-      // True once the user has acked a config line for a host that is no longer
-      // the one we'd advertise — i.e. the line in their node is now stale.
+      // True once the user has acked a config line that no longer matches what
+      // we'd advertise — i.e. the line sitting in their node is now stale. The
+      // PORT counts as much as the host: changing the public port under
+      // Advanced invalidates the pasted line just as completely.
       advertised_stale: !!(s.btc_p2p_acked && s.btc_p2p_advertised_for_host
-        && s.btc_p2p_advertised_for_host !== s.btc_p2p_vps_host),
+        && (s.btc_p2p_advertised_for_host !== s.btc_p2p_vps_host
+            || (s.btc_p2p_advertised_port || 8333) !== (s.btc_p2p_remote_port || 8333))),
       verified_at: s.btc_p2p_verified_at || null,
       verified_agent: s.btc_p2p_verified_agent || null,
       // RPC-derived. null means "unknown" — the UI must never render it as
@@ -367,6 +376,13 @@ async function handleApi(req, res) {
 
   // POST /api/btc/enable — { remote_port?, target_host?, target_port?, vps_host? }
   if (pathname === '/api/btc/enable' && req.method === 'POST') {
+    // This dials an arbitrary host (detection) and spawns ssh at one. Same
+    // reasoning as verify/test-connection: the UI is unauthenticated, and is
+    // safe only because the platforms keep it off the network.
+    if (rateLimited('btc-enable', 6)) {
+      sendJson(res, 429, { error: 'Too many attempts — wait a moment.' });
+      return;
+    }
     const body = await parseBody(req);
     const s = state.get();
     const patch = {};
@@ -450,6 +466,17 @@ async function handleApi(req, res) {
       patch.btc_p2p_vps_private_key = key;
     }
 
+    // A past verification proves a specific host:port answered. Change either
+    // and it proves nothing, so drop it rather than leave a ✓ next to an
+    // endpoint that was never tested.
+    const merged2 = { ...s, ...patch };
+    if (s.btc_p2p_verified_at
+        && (merged2.btc_p2p_vps_host !== s.btc_p2p_vps_host
+            || merged2.btc_p2p_remote_port !== s.btc_p2p_remote_port)) {
+      patch.btc_p2p_verified_at = null;
+      patch.btc_p2p_verified_agent = null;
+    }
+
     if (Object.keys(patch).length) state.update(patch);
 
     try {
@@ -470,8 +497,10 @@ async function handleApi(req, res) {
       ok: true,
       // The user has to undo the half we cannot: the line in their node's config.
       cleanup: {
+        // The line as PASTED, not as currently configured — the user has to
+        // find and delete that exact text, and it may predate a port change.
         externalip_line: s.btc_p2p_advertised_for_host
-          ? `externalip=${s.btc_p2p_advertised_for_host}:${s.btc_p2p_remote_port || 8333}`
+          ? `externalip=${s.btc_p2p_advertised_for_host}:${s.btc_p2p_advertised_port || 8333}`
           : null,
         remote_port: s.btc_p2p_remote_port || 8333,
       },
@@ -485,6 +514,7 @@ async function handleApi(req, res) {
     state.update({
       btc_p2p_acked: true,
       btc_p2p_advertised_for_host: s.btc_p2p_vps_host || null,
+      btc_p2p_advertised_port: s.btc_p2p_remote_port || 8333,
     });
     sendJson(res, 200, { ok: true });
     return;
@@ -589,8 +619,11 @@ async function handleApi(req, res) {
       patch.btc_p2p_vps_source = 'own';
     }
 
-    // Make sure a keypair exists and this record owns a copy of it.
-    let key = s.vps_ssh_private_key;
+    // Make sure a keypair exists and this record owns a copy of it. Prefer the
+    // copy we already hold: after /api/vps/reset the stratum key is null, and
+    // minting a fresh one here would replace a key the P2P VPS's authorized_keys
+    // already trusts — breaking a tunnel the user did not ask us to touch.
+    let key = s.btc_p2p_vps_private_key || s.vps_ssh_private_key;
     if (!key) {
       const kp = sshKeygenHelper.generateKeyPair();
       state.update({ vps_ssh_private_key: kp.privateKeyPem, vps_ssh_public_key: kp.publicKeyOpenSSH });
@@ -598,7 +631,21 @@ async function handleApi(req, res) {
     }
     patch.btc_p2p_vps_private_key = key;
 
+    // Pointing at a different machine invalidates any past verification.
+    if (s.btc_p2p_verified_at && patch.btc_p2p_vps_host !== s.btc_p2p_vps_host) {
+      patch.btc_p2p_verified_at = null;
+      patch.btc_p2p_verified_agent = null;
+    }
+
     state.update(patch);
+
+    // Rebuild if this moved a live tunnel to a different host — otherwise it
+    // keeps forwarding from the old VPS while the UI shows the new one.
+    if (s.btc_p2p_enabled && patch.btc_p2p_vps_host !== s.btc_p2p_vps_host) {
+      btcP2pManager.enable().catch((err) =>
+        console.error(`[btc-p2p] reconfigure failed: ${err.message}`));
+    }
+
     sendJson(res, 200, { ok: true, host: patch.btc_p2p_vps_host, source: patch.btc_p2p_vps_source });
     return;
   }
@@ -656,7 +703,7 @@ async function handleApi(req, res) {
     try { require('fs').unlinkSync('/root/data/btc_p2p_known_hosts'); } catch (_) {}
     const s = state.get();
     const cleanup = s.btc_p2p_acked && s.btc_p2p_advertised_for_host
-      ? { externalip_line: `externalip=${s.btc_p2p_advertised_for_host}:${s.btc_p2p_remote_port || 8333}` }
+      ? { externalip_line: `externalip=${s.btc_p2p_advertised_for_host}:${s.btc_p2p_advertised_port || 8333}` }
       : null;
     state.update({
       btc_p2p_enabled: false,
@@ -669,6 +716,7 @@ async function handleApi(req, res) {
       btc_p2p_last_error: null,
       btc_p2p_acked: false,
       btc_p2p_advertised_for_host: null,
+      btc_p2p_advertised_port: null,
       btc_p2p_verified_at: null,
       btc_p2p_verified_agent: null,
     });

@@ -51,7 +51,11 @@ const INITIAL_STATE = {
   btc_p2p_vps_private_key: null,
   btc_p2p_tunnel_status: 'disconnected',
   btc_p2p_last_error: null,
-  btc_p2p_advertised_for_host: null,  // host at the time the user acked the config line
+  // The endpoint the user actually pasted into their node, captured at ack time.
+  // BOTH halves matter: the line is `host:port`, so changing the public port
+  // under Advanced invalidates it just as surely as changing the VPS does.
+  btc_p2p_advertised_for_host: null,
+  btc_p2p_advertised_port: null,
   btc_p2p_acked: false,
   btc_p2p_verified_at: null,
   btc_p2p_verified_agent: null,

@@ -38,6 +38,8 @@ class BtcP2pManager {
     // re-checked periodically, because getConfig() must stay synchronous.
     this.target = null;
     this.monitor = null;
+    // The config the live ssh process was spawned with — see _signature().
+    this.spawnedSignature = null;
 
     this.tunnel = new SshTunnel({
       name: 'btc-p2p',
@@ -85,10 +87,38 @@ class BtcP2pManager {
     return this.target;
   }
 
+  // Everything the ssh command line is built from. `start()` is a no-op when a
+  // process is already running, so any of these changing while the tunnel is up
+  // has to force a rebuild — otherwise the UI reports the new port while traffic
+  // still arrives on the old one, which stays invisible until Verify fails.
+  //
+  // This CANNOT be compared against freshly-read state on both sides: the API
+  // handler writes the new values before calling enable(), so both reads would
+  // see the new config and nothing would ever look changed. The comparison has
+  // to be against what the live ssh process was actually spawned with, which is
+  // what `spawnedSignature` records.
+  _signature() {
+    const s = state.get();
+    return [
+      s.btc_p2p_vps_host, s.btc_p2p_vps_ssh_port, s.btc_p2p_vps_ssh_user,
+      s.btc_p2p_remote_port,
+      this.target && this.target.host, this.target && this.target.port,
+    ].join('|');
+  }
+
   async enable() {
+    const running = this.status === 'connected' || this.status === 'connecting';
+    const before = this.spawnedSignature;
     await this.resolveTarget();          // throws if we can't find the node
     state.update({ btc_p2p_enabled: true });
-    this.tunnel.start();
+    const now = this._signature();
+    if (running && before && now !== before) {
+      console.log(`[btc-p2p] Configuration changed (${before} -> ${now}) — rebuilding the tunnel`);
+      this.tunnel.restart();             // debounced stop + start
+    } else {
+      this.tunnel.start();               // no-op if already running
+    }
+    this.spawnedSignature = now;
     this.startMonitor();
   }
 
@@ -117,6 +147,7 @@ class BtcP2pManager {
     if (before && (before.host !== now.host || before.port !== now.port)) {
       console.log(`[btc-p2p] Node moved ${before.host}:${before.port} -> ${now.host}:${now.port} — rebuilding the tunnel`);
       this.tunnel.restart();   // debounced
+      this.spawnedSignature = this._signature();
     }
   }
 
@@ -125,6 +156,7 @@ class BtcP2pManager {
     // Stop first, then clear the flag: getConfig() returns null once the flag is
     // down, and stop() must still know what it is stopping.
     this.tunnel.stop();
+    this.spawnedSignature = null;
     state.update({ btc_p2p_enabled: false, btc_p2p_tunnel_status: 'disconnected' });
   }
 
@@ -135,6 +167,7 @@ class BtcP2pManager {
     try {
       await this.resolveTarget();
       this.tunnel.start();
+      this.spawnedSignature = this._signature();
       this.startMonitor();
     } catch (err) {
       console.error(`[btc-p2p] Cannot resume: ${err.message}`);
@@ -142,7 +175,7 @@ class BtcP2pManager {
     }
   }
 
-  stop() { this.stopMonitor(); this.tunnel.stop(); }
+  stop() { this.stopMonitor(); this.tunnel.stop(); this.spawnedSignature = null; }
 
   /**
    * Dial our own public endpoint from here — out to the internet and back

@@ -304,7 +304,7 @@ action_check_knots() {
   if [[ -n "$v_rpcbind" ]]; then
     ok "  rpcbind=$v_rpcbind"
     if [[ "$v_rpcbind" != "127.0.0.1" && "$v_rpcbind" != "::1" ]]; then
-      warn "  rpcbind is not loopback — see security §9.1. Datum runs on the same host; loopback is safer."
+      warn "  rpcbind is not loopback. Datum runs on the same host, so loopback is safer — anything else exposes the RPC beyond this machine."
     fi
   else
     warn "  rpcbind= (missing — Knots' default is loopback, but explicit is better)"
@@ -1101,7 +1101,7 @@ Commands:
 Run with no command to get an interactive menu.
 
 Typical bitcoin-qt workflow (Datum on demand, HashGG in Docker):
-  $0 check-knots     # first: make sure bitcoin.conf is ready (see plan §4.1)
+  $0 check-knots     # first: make sure bitcoin.conf is ready
   $0 build           # once
   $0 configure       # once (or re-run to change settings)
   $0 open-firewall   # once per host, if ufw is active

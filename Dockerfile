@@ -1,4 +1,4 @@
-# TODO (§9.6): pin by manifest-list digest at publish time, e.g.
+# TODO: pin by manifest-list digest at publish time, e.g.
 #   FROM debian:bookworm-slim@sha256:<digest>
 # Get the current digest with:
 #   docker buildx imagetools inspect debian:bookworm-slim
