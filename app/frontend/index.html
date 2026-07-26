@@ -383,6 +383,9 @@
 
     <!-- Tunnel Choice Screen -->
     <div id="screen-tunnel-choice" class="screen" style="display:none;">
+      <!-- Survives a reset only in the DOM: the state describing this line is
+           destroyed by the reset itself, so this is the last chance to show it. -->
+      <div id="reset-cleanup-note" class="hint-box" style="display:none;"></div>
       <h2>Choose your tunnel method</h2>
       <p>Both options require no port forwarding on your router and no static IP. Your tunnel is monitored and restarted automatically.</p>
       <div class="tunnel-choice-grid">

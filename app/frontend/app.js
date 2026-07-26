@@ -39,6 +39,7 @@ const els = {
   statusAgent: document.getElementById('status-agent'),
   btnRestartTunnel: document.getElementById('btn-restart-tunnel'),
   // Bitcoin clearnet inbound
+  resetCleanupNote: document.getElementById('reset-cleanup-note'),
   btcSection: document.getElementById('advanced-btc-p2p'),
   btcSummaryNote: document.getElementById('btc-summary-note'),
   btcIntro: document.getElementById('btc-intro'),
@@ -635,19 +636,34 @@ els.btnCopy.addEventListener('click', () => {
 
 els.btnReset.addEventListener('click', async () => {
   const mode = currentMode;
-  const msg = mode === 'vps'
+  let msg = mode === 'vps'
     ? 'This will disconnect the VPS tunnel and clear all VPS configuration. Continue?'
     : 'This will disconnect the tunnel and clear your playit.gg credentials. Continue?';
+  // Warn BEFORE, not only after: a reset leaves the user's node advertising an
+  // address that is about to stop working, and only they can undo that. Saying
+  // it up front is the half that survives them navigating away afterwards.
+  if (btcState && btcState.acked) {
+    msg += '\n\nYour Bitcoin node is also advertising a public address through HashGG. '
+         + 'After this you will need to remove that line from your node\'s configuration.';
+  }
   if (!confirm(msg)) return;
   try {
     if (mode === 'vps') {
+      // Stratum-only: deliberately does not touch the Bitcoin P2P record.
       await api('POST', '/vps/reset');
       currentMode = null;
       showScreen('tunnel-choice');
     } else {
-      await api('POST', '/reset');
+      const r = await api('POST', '/reset');
       currentMode = null;
       showScreen('tunnel-choice');
+      const line = r && r.btc_cleanup && r.btc_cleanup.externalip_line;
+      if (line) {
+        els.resetCleanupNote.style.display = 'block';
+        els.resetCleanupNote.innerHTML = '<strong>One thing left to do.</strong> Remove '
+          + `<code>${line}</code> from your Bitcoin node's configuration — it points at a `
+          + 'tunnel that no longer exists, and your node will keep advertising it until you do.';
+      }
     }
   } catch (err) {
     showError('Failed to reset: ' + err.message);
@@ -968,13 +984,17 @@ function renderBtc(d) {
 
   // Nothing to show unless we found a node (or the platform needs to explain
   // itself). Keeps the dashboard unchanged for everyone else.
-  const show = !!d.detected || d.detecting || d.capability !== 'full';
+  // `d.enabled` matters as much as detection: a node that stops answering must
+  // not take the section away with it, or the user is left with a live tunnel
+  // they can neither see nor switch off.
+  const show = !!d.detected || d.detecting || d.enabled || d.capability !== 'full';
   els.btcSection.style.display = show ? 'block' : 'none';
   if (!show) return;
 
   // Cheap redraw guard: the 3s poll must not wipe "Copied!" feedback or swap
   // the DOM out from under a click.
-  const sig = JSON.stringify([d.capability, d.enabled, d.detecting, d.tunnel_status, d.last_error,
+  const sig = JSON.stringify([d.capability, d.enabled, d.detecting, !!d.detected,
+    d.tunnel_status, d.last_error,
     d.public_endpoint, d.acked, d.verified_at, d.advertising, d.inbound_peers,
     d.advertised_stale, d.verified_endpoint, d.vps_host, d.stratum_vps_host,
     d.detected && d.detected.user_agent]);
@@ -1015,8 +1035,22 @@ function renderBtc(d) {
   const [dot, text] = TS[d.tunnel_status] || ['dot-gray', d.tunnel_status || '—'];
   els.btcDotTunnel.className = `dot ${dot}`;
   els.btcTunnelText.textContent = text;
-  els.btcTunnelErr.style.display = d.last_error ? 'block' : 'none';
-  els.btcTunnelErr.textContent = d.last_error || '';
+  // A connected tunnel to a node that has stopped answering is the one state
+  // where everything looks fine and nothing works: peers reach the VPS and get
+  // refused at the far end. The tunnel is genuinely up, so this is a note about
+  // the node rather than an error about the tunnel.
+  const nodeQuiet = d.tunnel_status === 'connected' && !d.detected && !d.detecting;
+  if (d.last_error) {
+    els.btcTunnelErr.style.display = 'block';
+    els.btcTunnelErr.textContent = d.last_error;
+  } else if (nodeQuiet) {
+    els.btcTunnelErr.style.display = 'block';
+    els.btcTunnelErr.textContent = 'The tunnel is up, but your Bitcoin node is not answering. '
+      + 'If it is restarting this will clear on its own.';
+  } else {
+    els.btcTunnelErr.style.display = 'none';
+    els.btcTunnelErr.textContent = '';
+  }
 
   // Step 2 — firewall one-liner
   const port = d.remote_port || 8333;

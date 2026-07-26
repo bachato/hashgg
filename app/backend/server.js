@@ -494,13 +494,29 @@ async function handleApi(req, res) {
       patch.btc_p2p_verified_agent = null;
     }
 
+    // Snapshot exactly what this request is about to change, so a failure can
+    // put it back. This endpoint doubles as "apply new settings", and applying a
+    // bad setting to a LIVE tunnel must not leave the two out of step: the ssh
+    // process keeps running with the old config regardless (resolveTarget throws
+    // before anything is torn down), so forcing enabled=false here would show
+    // "off" in the UI while the VPS is still forwarding to the node.
+    const wasEnabled = !!s.btc_p2p_enabled;
+    const rollback = {};
+    for (const k of Object.keys(patch)) rollback[k] = s[k];
+
     if (Object.keys(patch).length) state.update(patch);
 
     try {
       await btcP2pManager.enable();
       sendJson(res, 200, { ok: true });
     } catch (err) {
-      state.update({ btc_p2p_enabled: false });
+      if (wasEnabled) {
+        // Was running and still is. Put the settings back so what we display
+        // matches what the tunnel is actually doing.
+        state.update({ ...rollback, btc_p2p_enabled: true });
+      } else {
+        state.update({ btc_p2p_enabled: false });
+      }
       sendJson(res, 400, { error: err.message });
     }
     return;

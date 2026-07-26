@@ -236,11 +236,27 @@ function candidateTargets(override) {
   //    that keeps us off the whitebind port — see the note above.
   push(process.env.BITCOIN_P2P_HOST, process.env.BITCOIN_P2P_PORT, 'platform env');
 
-  // 3. Documented fallbacks, used only when the env vars are absent.
+  // 3. Documented fallbacks, used only when the env vars are absent. These are
+  //    guesses, not declarations — see authoritative() for why that matters to
+  //    the error we report.
   push('10.21.21.7', 9333, 'umbrel default');       // Umbrel bitcoin-knots
   push('bitcoind.embassy', 8333, 'startos 0.3.5.1');
   push('bitcoind.startos', 58333, 'startos 0.4.0'); // plain bind, NOT 58334
+  // A node on the Docker host, which is the ordinary plain-Docker arrangement
+  // (Bitcoin on the desktop, HashGG in a container). Resolves only when the
+  // container was started with host-gateway mapped, so it costs nothing
+  // elsewhere — and without it a hand-started container finds nothing at all.
+  push('host.docker.internal', 8333, 'docker host');
   return out;
+}
+
+// Did the caller TELL us where the node is, or are we guessing? An explicit
+// override or the platform's env var is a declaration, and its failure is worth
+// reporting verbatim — that is where the "your host firewall is dropping this"
+// hint belongs. The fallbacks are guesses, and naming one of them reports an
+// Umbrel container address to somebody who has never run Umbrel.
+function authoritative(why) {
+  return why === 'manual override' || why === 'platform env';
 }
 
 let detectCache = { at: 0, result: null };
@@ -285,6 +301,7 @@ async function sweep(opts = {}) {
   // things like "bitcoind.startos not found" on an Umbrel box, which sends the
   // user somewhere irrelevant.
   let firstError = null;
+  let guessedOnly = true;
   for (const c of candidateTargets(opts.override)) {
     let err = null;
     try {
@@ -299,10 +316,20 @@ async function sweep(opts = {}) {
     } catch (e) {
       err = e.message;
     }
-    if (!firstError) firstError = { ok: false, error: `${c.host}:${c.port} — ${err}`, tried: c.why };
+    if (!firstError) {
+      firstError = { ok: false, error: `${c.host}:${c.port} — ${err}`, tried: c.why };
+      guessedOnly = !authoritative(c.why);
+    }
   }
 
-  const result = firstError || { ok: false, error: 'no Bitcoin node found' };
+  const result = (firstError && !guessedOnly)
+    ? firstError
+    : {
+        ok: false,
+        tried: firstError && firstError.tried,
+        error: 'No Bitcoin node found on this machine. If your node runs '
+             + 'somewhere else, enter its address under Advanced.',
+      };
   detectCache = { at: now, result };
   return result;
 }

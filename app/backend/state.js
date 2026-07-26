@@ -40,7 +40,7 @@ const INITIAL_STATE = {
   btc_p2p_target_port: null,
   // Its own VPS record — populated even when the user picks "same as my stratum
   // VPS", so a stratum-side reset or mode switch can never orphan this tunnel.
-  btc_p2p_vps_source: null,           // 'shared' | 'own' (provenance, for UI copy)
+  btc_p2p_vps_source: null,           // 'shared' | 'own' | 'startos'  (UI copy only)
   btc_p2p_vps_host: null,
   btc_p2p_vps_ssh_port: 22,
   btc_p2p_vps_ssh_user: 'hashgg',
