@@ -89,6 +89,11 @@ function detectPlatform() {
 // rendered into text the user copies into their node's configuration, so a
 // newline here would let extra directives ride along. Both uses need it, which
 // is why it is not phrased as "because it reaches a shell".
+//
+// EVERY point that accepts a host must go through this rather than re-spelling
+// the charset test inline. Hand-rolled copies drifted once already: they caught
+// the charset but not link-local/multicast, so an address this function rejects
+// at render time could still be stored and dialled.
 function isValidHost(h) {
   return typeof h === 'string' && h.length > 0 && h.length <= 255
       && h[0] !== '-' && /^[a-zA-Z0-9.\-:]+$/.test(h)
@@ -366,6 +371,12 @@ async function handleApi(req, res) {
             || (s.btc_p2p_advertised_port || 8333) !== (s.btc_p2p_remote_port || 8333))),
       verified_at: s.btc_p2p_verified_at || null,
       verified_agent: s.btc_p2p_verified_agent || null,
+      // Not gated on `enabled`: on the StartOS guided path HashGG owns no
+      // tunnel, so `enabled` stays false and this is the only record that the
+      // flow completed. Without it a returning user sees no sign of success.
+      verified_endpoint: (s.btc_p2p_verified_at && s.btc_p2p_vps_host
+        && isValidHost(s.btc_p2p_vps_host))
+        ? `${s.btc_p2p_vps_host}:${s.btc_p2p_remote_port || 8333}` : null,
       // RPC-derived. null means "unknown" — the UI must never render it as
       // "no", because on every platform but Umbrel we simply cannot see this.
       advertising,
@@ -408,7 +419,7 @@ async function handleApi(req, res) {
         // Same idiom as /api/vps/configure: these values reach an ssh argv, and
         // the host is also rendered into copyable config text, so a newline here
         // would let extra bitcoin.conf directives ride along.
-        if (h[0] === '-' || !/^[a-zA-Z0-9.\-:]+$/.test(h) || h.length > 255) {
+        if (!isValidHost(h)) {
           sendJson(res, 400, { error: 'Please enter a valid node address' });
           return;
         }
@@ -432,7 +443,7 @@ async function handleApi(req, res) {
     // own onboarding; until then an explicit vps_host is accepted.
     let vpsHost = body.vps_host !== undefined ? (body.vps_host || '').toString().trim() : null;
     if (vpsHost) {
-      if (vpsHost[0] === '-' || !/^[a-zA-Z0-9.\-:]+$/.test(vpsHost) || vpsHost.length > 255) {
+      if (!isValidHost(vpsHost)) {
         sendJson(res, 400, { error: 'Please enter a valid VPS address' });
         return;
       }
@@ -457,13 +468,16 @@ async function handleApi(req, res) {
     const merged = { ...s, ...patch };
     if (!merged.btc_p2p_vps_private_key) {
       let key = merged.vps_ssh_private_key;
+      let pub = merged.vps_ssh_public_key;
       if (!key) {
         // playit-mode install that has never set up a VPS — mint the keypair now.
         const kp = sshKeygenHelper.generateKeyPair();
         state.update({ vps_ssh_private_key: kp.privateKeyPem, vps_ssh_public_key: kp.publicKeyOpenSSH });
         key = kp.privateKeyPem;
+        pub = kp.publicKeyOpenSSH;
       }
       patch.btc_p2p_vps_private_key = key;
+      patch.btc_p2p_vps_public_key = pub || null;
     }
 
     // A past verification proves a specific host:port answered. Change either
@@ -599,7 +613,7 @@ async function handleApi(req, res) {
       patch.btc_p2p_vps_source = 'shared';
     } else {
       const host = (body.host || '').toString().trim();
-      if (!host || host[0] === '-' || !/^[a-zA-Z0-9.\-:]+$/.test(host) || host.length > 255) {
+      if (!isValidHost(host)) {
         sendJson(res, 400, { error: 'Please enter a valid VPS address' });
         return;
       }
@@ -624,12 +638,15 @@ async function handleApi(req, res) {
     // minting a fresh one here would replace a key the P2P VPS's authorized_keys
     // already trusts — breaking a tunnel the user did not ask us to touch.
     let key = s.btc_p2p_vps_private_key || s.vps_ssh_private_key;
+    let pub = (s.btc_p2p_vps_private_key ? s.btc_p2p_vps_public_key : s.vps_ssh_public_key);
     if (!key) {
       const kp = sshKeygenHelper.generateKeyPair();
       state.update({ vps_ssh_private_key: kp.privateKeyPem, vps_ssh_public_key: kp.publicKeyOpenSSH });
       key = kp.privateKeyPem;
+      pub = kp.publicKeyOpenSSH;
     }
     patch.btc_p2p_vps_private_key = key;
+    patch.btc_p2p_vps_public_key = pub || null;
 
     // Pointing at a different machine invalidates any past verification.
     if (s.btc_p2p_verified_at && patch.btc_p2p_vps_host !== s.btc_p2p_vps_host) {
@@ -653,13 +670,21 @@ async function handleApi(req, res) {
   // GET /api/btc/vps/setup-script — for the P2P VPS specifically
   if (pathname === '/api/btc/vps/setup-script' && req.method === 'GET') {
     let s = state.get();
-    if (!s.vps_ssh_public_key || !s.vps_ssh_private_key) {
+    // The script must install the key THIS tunnel authenticates with. After
+    // /api/vps/reset the stratum keypair is gone, so falling back to it would
+    // mint a fresh one and hand the user a script that installs a key the P2P
+    // tunnel does not hold — re-running it could then never fix the
+    // "Permission denied (publickey)" it was meant to fix.
+    if (!s.btc_p2p_vps_public_key && !s.vps_ssh_public_key) {
       const kp = sshKeygenHelper.generateKeyPair();
-      state.update({ vps_ssh_private_key: kp.privateKeyPem, vps_ssh_public_key: kp.publicKeyOpenSSH });
+      state.update({
+        vps_ssh_private_key: kp.privateKeyPem, vps_ssh_public_key: kp.publicKeyOpenSSH,
+        btc_p2p_vps_private_key: kp.privateKeyPem, btc_p2p_vps_public_key: kp.publicKeyOpenSSH,
+      });
       s = state.get();
     }
     const script = buildSetupScript(
-      s.vps_ssh_public_key,
+      s.btc_p2p_vps_public_key || s.vps_ssh_public_key,
       [s.btc_p2p_remote_port || 8333],
       s.btc_p2p_vps_host
     );
@@ -711,6 +736,7 @@ async function handleApi(req, res) {
       btc_p2p_vps_ssh_port: 22,
       btc_p2p_vps_ssh_user: 'hashgg',
       btc_p2p_vps_private_key: null,
+      btc_p2p_vps_public_key: null,
       btc_p2p_vps_source: null,
       btc_p2p_tunnel_status: 'disconnected',
       btc_p2p_last_error: null,

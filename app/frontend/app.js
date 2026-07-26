@@ -960,7 +960,7 @@ function renderBtc(d) {
   // the DOM out from under a click.
   const sig = JSON.stringify([d.capability, d.enabled, d.detecting, d.tunnel_status, d.last_error,
     d.public_endpoint, d.acked, d.verified_at, d.advertising, d.inbound_peers,
-    d.advertised_stale, d.detected && d.detected.user_agent]);
+    d.advertised_stale, d.verified_endpoint, d.detected && d.detected.user_agent]);
   if (sig === lastBtcSig) return;
   lastBtcSig = sig;
 
@@ -1042,7 +1042,11 @@ function renderBtcGuidance(d) {
   els.btcIntro.style.display = 'none';
   els.btcChecklist.style.display = 'none';
   els.btcGuidance.style.display = 'block';
-  els.btcSummaryNote.textContent = d.detected ? `· ${shortAgent(d.detected.user_agent)} found` : '';
+  // On this path HashGG owns no tunnel, so a completed setup would otherwise
+  // leave no trace after a reload — on the longest flow of the three.
+  els.btcSummaryNote.textContent = d.verified_endpoint
+    ? `· reachable at ${d.verified_endpoint}`
+    : (d.detected ? `· ${shortAgent(d.detected.user_agent)} found` : '');
 
   els.btcStartos.style.display = (d.capability === 'guided') ? 'block' : 'none';
   if (d.capability === 'guided') {

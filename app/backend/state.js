@@ -49,6 +49,11 @@ const INITIAL_STATE = {
   // nulls the stratum key, which would otherwise leave this tunnel unable to
   // reconnect after any restart. Same reasoning as storing the host.
   btc_p2p_vps_private_key: null,
+  // The matching public key, stored for the same reason: the P2P setup script
+  // must install the key THIS tunnel authenticates with. Reading the stratum
+  // record's copy would hand the user a script that installs a different key
+  // after /api/vps/reset, so re-running it could never fix the auth failure.
+  btc_p2p_vps_public_key: null,
   btc_p2p_tunnel_status: 'disconnected',
   btc_p2p_last_error: null,
   // The endpoint the user actually pasted into their node, captured at ack time.
