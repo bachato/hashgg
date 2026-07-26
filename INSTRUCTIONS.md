@@ -24,6 +24,8 @@ HashGG has a simple web dashboard accessible from your StartOS UI. It shows:
 - **Datum Gateway** — whether Datum Gateway's stratum port is reachable.
 - **Agent** — whether the tunnel agent (playit or SSH) is running.
 
+Further down, an Advanced section appears if HashGG can see a Bitcoin node — see [Making Your Bitcoin Node Reachable](#making-your-bitcoin-node-reachable-optional).
+
 # Setup Options
 
 ## Option 1: playit.gg (Claim Flow)
@@ -49,6 +51,37 @@ The flow (all guided by the UI):
 5. Click **Test Connection**. If it succeeds, click **Connect**.
 
 HashGG then maintains a persistent `ssh -R` tunnel to the VPS, reconnecting automatically if it drops.
+
+# Making Your Bitcoin Node Reachable (optional)
+
+Separately from mining, HashGG can put your **Bitcoin node** on the public internet so other nodes can connect *to* you. Most home nodes only reach out — nothing can reach in, because that needs a public address and an open port.
+
+It is off by default. Once HashGG can see a Bitcoin node, a **Make your Bitcoin node reachable** section appears on the dashboard.
+
+## What it involves
+
+Two things, and only the first is automatic:
+
+1. **HashGG opens the door** — a public address on your VPS that forwards to your node.
+2. **You put up the sign** — one line pasted into your Bitcoin node's own settings, telling it to advertise that address. A node that accepts connections but never advertises gets almost no peers, because nobody knows it exists. HashGG cannot write that line for you, so it gives you the line, a Copy button, and tells you where it goes.
+
+HashGG then dials your own public address from the outside and completes a Bitcoin handshake, so you can see it worked.
+
+## Before you turn it on
+
+- **Your home IP stays private** — peers connect to your VPS, not to you.
+- **It does not make your node anonymous.** Connections your node makes *out* still leave from your home connection, exactly as now. Inbound is hidden; outbound is not.
+- **Expect roughly 100–300 GB a month of extra VPS traffic**, sometimes more when another node syncs history from you. Check your VPS plan's allowance; you can cap it with `maxuploadtarget`.
+- **Every incoming peer looks like one local connection** to your node. That is how inbound Tor already works and is normal.
+
+## Before you uninstall HashGG or change VPS
+
+**Turn this off first, and remove the line from your Bitcoin node's settings.** Otherwise your node carries on telling the network to reach it at an address that no longer works. The dashboard shows you exactly what to remove when you switch it off.
+
+## On StartOS
+
+- **0.4.0** — StartOS does this natively, and better: it preserves each peer's real IP address. HashGG writes the setup commands for you instead of tunnelling. You will need a second VPS running StartTunnel, separate from any mining VPS.
+- **0.3.5.1** — not possible. The Bitcoin package rewrites its configuration every time it starts and only ever advertises its Tor address, so nothing can tell it about a public one. HashGG explains this rather than offering something that would not work.
 
 # Setting Up Your Miners
 
@@ -87,12 +120,19 @@ Click the **Reset** button in the dashboard to clear your configuration:
 
 - playit.gg mode: clears your secret key and tunnel configuration.
 - VPS mode: clears the VPS host, port, and SSH keypair.
+- If you had made your Bitcoin node reachable, that is switched off too — and HashGG shows you the line to remove from your Bitcoin node's settings, because a reset cannot do that for you.
 
 To also remove HashGG's footprint *on the VPS* (the `hashgg` user, SSH config, and firewall rule) — for example when switching providers — use **Remove HashGG from this VPS…** on the dashboard before resetting. It gives you a copy-paste teardown script to run on the VPS as root.
 
 After a reset you'll be returned to the tunnel-choice screen.
 
 # Troubleshooting
+
+**"No Bitcoin node found" but my node is running (Linux, plain Docker).** The container reaches your node across the Docker bridge, and a default-deny firewall silently *drops* those packets rather than refusing them — so it looks like nothing is there. Run `bash host-setup/install-datum-gateway.sh open-firewall`, which opens both Datum's stratum port and Bitcoin's P2P port.
+
+**Verify says nothing answered.** The tunnel can be up while the port is still closed on the VPS. Check step 2's firewall command ran, and that your provider's own firewall panel allows the port too.
+
+**No inbound peers after a few hours.** The tunnel is only half of it — check the line really saved in your Bitcoin node's settings and that the node restarted afterwards. On Umbrel, HashGG can see this directly and will tell you whether your node is advertising the address.
 
 **Tunnel shows "connecting"** — The tunnel agent is starting up. Wait 10–30 seconds. If it persists, check that your server (and VPS, if applicable) has internet access.
 

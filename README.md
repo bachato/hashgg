@@ -11,6 +11,8 @@ HashGG exposes your [Datum Gateway](https://github.com/ocean-xyz/datum-gateway) 
 - **playit.gg** (~$3/month, fiat) — easiest setup, managed service
 - **VPS SSH tunnel** (~$11/month, Bitcoin) — privacy-focused, full control, no third-party dependency on the data path
 
+It can also [**make your Bitcoin node reachable**](#make-your-bitcoin-node-reachable) on the public internet, so other nodes can connect to yours — without exposing your home IP address. Opt-in, and off by default.
+
 ---
 
 ## Why "GG"?
@@ -38,6 +40,7 @@ HashGG is a [StartOS](https://start9.com) service that runs alongside Datum Gate
 1. Manages a tunnel between your Datum Gateway stratum port and the public internet — via either [playit.gg](https://playit.gg) or an SSH reverse tunnel to a VPS you control
 2. Supervises the tunnel agent and reconnects automatically
 3. Gives you a public `stratum+tcp://` endpoint you can hand to any miner
+4. Optionally does the same for your **Bitcoin node's** P2P port, so the node accepts inbound peers from the network
 
 No router configuration. No dynamic DNS. No VPN. Works behind NAT, double NAT, CGNAT — whatever your ISP throws at you.
 
@@ -189,6 +192,41 @@ The dashboard has a few extras once you're connected:
 ### Why Premium?
 
 playit.gg's free tier only offers game-specific tunnel types (Minecraft, Terraria, etc.) that inspect traffic at the relay and reject anything that isn't the expected game protocol. Mining stratum traffic gets rejected by these tunnels. Premium unlocks raw TCP tunnels that forward traffic without inspection — exactly what mining needs. At ~$3/month, it's the cheapest way to expose a port through NAT without running your own VPS.
+
+---
+
+## Make your Bitcoin node reachable
+
+Separately from mining, HashGG can put your **Bitcoin node** on the public internet, so other nodes can connect *to* you. Most home nodes only ever reach out; nothing can reach in, because inbound connections need a public address and an open port.
+
+It is opt-in, off by default, and lives behind an Advanced section on the dashboard that only appears once HashGG can see a Bitcoin node.
+
+### The two halves
+
+Making a node reachable is two separate things, and only the first can be automated:
+
+1. **The door** — a public `IP:port` that forwards to your node. HashGG builds this through a VPS, the same way it tunnels your stratum port.
+2. **The sign** — telling your node to *advertise* that address. A node that accepts connections but never advertises gets essentially no peers, because nobody knows the address exists. This is one line in your Bitcoin node's own configuration, and HashGG cannot write it for you — so it gives you the line and a Copy button, and tells you exactly where it goes.
+
+HashGG then verifies the result by dialling your own public address from the outside and completing a Bitcoin handshake, so you know it worked rather than hoping.
+
+### What it means for you
+
+- **Your home IP stays private.** Peers connect to your VPS, not to you.
+- **It does not make your node anonymous.** Connections your node makes *out* still leave from your home internet connection, exactly as they do now. Inbound is hidden; outbound is not.
+- **Expect roughly 100–300 GB a month of extra VPS traffic**, sometimes more when another node is syncing history from you. Check your VPS plan's allowance. You can cap it with `maxuploadtarget` in your Bitcoin node's settings.
+- **Every incoming peer looks like one local connection** to your node, because the traffic arrives through the tunnel. This is exactly how inbound Tor already works and is normal.
+- **Turn it off before you uninstall HashGG or change VPS.** Otherwise your node carries on advertising an address that no longer works.
+
+### Per platform
+
+| Where you run it | What happens |
+| --- | --- |
+| **Umbrel**, or your own computer | Full feature. HashGG runs the tunnel; you paste one line into your Bitcoin node's settings. |
+| **StartOS 0.4.0** | StartOS does this natively, and better — it preserves each peer's real IP address. HashGG writes the setup commands for you rather than tunnelling: one block for a second VPS running [StartTunnel](https://docs.start9.com/start-tunnel/), one for StartOS. |
+| **StartOS 0.3.5.1** | Not possible. The Bitcoin package rewrites its configuration on every start and only ever advertises its Tor address, so nothing can tell it about a public one. HashGG says so rather than pretending. |
+
+On Linux, the container needs to reach your node's P2P port across the Docker bridge. `bash host-setup/install-datum-gateway.sh open-firewall` opens both that and Datum's stratum port. Without it, detection reports nothing found even though your node is running fine.
 
 ---
 
