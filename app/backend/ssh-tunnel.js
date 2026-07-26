@@ -11,8 +11,12 @@
 //     drive status or schedule a restart; without this a stop→start races itself.
 //   * kill by process HANDLE, never by raw PID — a PID captured before a fast
 //     restart can be reused by an unrelated process by the time we SIGKILL.
-//   * the "stable" timer — ssh exits non-zero for auth/bind failures within a
-//     second or two, so we only call it connected after it has survived a while.
+//   * "connected" comes from ssh, not from a clock — we wait for its own
+//     `remote forward success for: listen …` line. An earlier version declared
+//     success after a fixed 5 s, which fired *inside* ssh's 30 s ConnectTimeout:
+//     against an unreachable host it reported connected for ~25 s out of every
+//     35 s cycle, publishing an endpoint that did not work. A timer cannot know
+//     whether a socket was established; ssh does.
 //   * the debounced restart — several forward changes in quick succession
 //     coalesce into one reconnect instead of flapping the tunnel.
 //
@@ -26,10 +30,14 @@ const EventEmitter = require('events');
 
 const SSH_BIN = '/usr/bin/ssh';
 const MAX_BACKOFF = 60000;
-const STABLE_AFTER_MS = 5000;
 const RECONFIGURE_DEBOUNCE_MS = 600;
 const RESTART_DELAY_MS = 1000;
 const KILL_GRACE_MS = 5000;
+const SSH_CONNECT_TIMEOUT_S = 30;
+// Backstop only — we normally learn we're up from ssh itself (see below). This
+// must comfortably exceed SSH_CONNECT_TIMEOUT_S, or it fires while ssh is still
+// dialling and we report a tunnel that was never established.
+const FORWARD_TIMEOUT_MS = (SSH_CONNECT_TIMEOUT_S + 15) * 1000;
 
 class SshTunnel extends EventEmitter {
   /**
@@ -94,11 +102,16 @@ class SshTunnel extends EventEmitter {
 
     const args = [
       '-N',
+      // -v is load-bearing: it is what makes ssh announce "remote forward
+      // success", which is our only trustworthy signal that the tunnel is
+      // actually carrying traffic. Debug lines are filtered out of the log and
+      // out of the error message below.
+      '-v',
       '-o', 'StrictHostKeyChecking=accept-new',
       '-o', `UserKnownHostsFile=${this.knownHostsFile}`,
       '-o', 'ServerAliveInterval=30',
       '-o', 'ServerAliveCountMax=3',
-      '-o', 'ConnectTimeout=30',
+      '-o', `ConnectTimeout=${SSH_CONNECT_TIMEOUT_S}`,
       '-o', 'ExitOnForwardFailure=yes',
       '-o', 'BatchMode=yes',
       '-i', this.keyFile,
@@ -112,17 +125,49 @@ class SshTunnel extends EventEmitter {
     this.process = proc;
 
     let lastStderr = '';
+    let forwardsUp = 0;
+    const forwardsWanted = cfg.forwards.length;
 
     proc.stdout.on('data', (data) => {
       const line = data.toString().trim();
       if (line) console.log(`[${this.name}:out] ${line}`);
     });
 
+    // A single 'data' event can carry several lines, so split before matching —
+    // otherwise the success line hides inside a chunk and is never seen.
     proc.stderr.on('data', (data) => {
-      const line = data.toString().trim();
-      if (line) {
-        console.log(`[${this.name}:err] ${line}`);
-        lastStderr = line;
+      for (const line of data.toString().split('\n')) {
+        const l = line.trim();
+        if (!l) continue;
+
+        const isDebug = l.startsWith('debug');
+
+        if (l.includes('remote forward success for:')) {
+          forwardsUp++;
+          console.log(`[${this.name}] forward up (${forwardsUp}/${forwardsWanted}): ${l.replace(/^debug\d*:\s*/, '')}`);
+          // Every forward is bound on the remote side — this, not elapsed time,
+          // is what "connected" means. ExitOnForwardFailure=yes guarantees the
+          // process dies if any later forward fails, so we cannot be early.
+          if (forwardsUp >= forwardsWanted && this.generation === gen
+              && this.process && this.status === 'connecting') {
+            this._clearStable();
+            this.backoff = 2000;
+            this.upSince = Date.now();
+            this.onStable();
+            this._setStatus('connected', null);
+          }
+          continue;
+        }
+
+        // Keep the log readable: ~90 debug lines per connect would bury the
+        // messages that matter.
+        if (!isDebug) {
+          console.log(`[${this.name}:err] ${l}`);
+          // Only non-debug lines make sensible user-facing errors: "Permission
+          // denied (publickey).", "ssh: connect to host … Connection timed
+          // out", "Error: remote port forwarding failed for listen port 8333".
+          lastStderr = l;
+        }
       }
     });
 
@@ -149,16 +194,19 @@ class SshTunnel extends EventEmitter {
       }
     });
 
+    // Backstop. If ssh never announces the forwards — a version that words the
+    // message differently, or a wedged connection that neither succeeds nor
+    // times out — kill it rather than sit in 'connecting' forever. Killing lets
+    // the existing close handler report the error and schedule the retry, so
+    // there is one path for "it didn't work" instead of two.
     this.stableTimer = setTimeout(() => {
       this.stableTimer = null;
       if (this.generation === gen && this.process && this.status === 'connecting') {
-        console.log(`[${this.name}] SSH tunnel stable — marking connected`);
-        this.backoff = 2000;
-        this.upSince = Date.now();
-        this.onStable();
-        this._setStatus('connected', null);
+        console.error(`[${this.name}] No forward confirmation after ${FORWARD_TIMEOUT_MS / 1000}s — restarting`);
+        if (!lastStderr) lastStderr = 'Timed out waiting for the tunnel to come up';
+        try { this.process.kill('SIGTERM'); } catch (_) {}
       }
-    }, STABLE_AFTER_MS);
+    }, FORWARD_TIMEOUT_MS);
   }
 
   stop() {
@@ -229,4 +277,4 @@ class SshTunnel extends EventEmitter {
   }
 }
 
-module.exports = { SshTunnel, SSH_BIN, MAX_BACKOFF, STABLE_AFTER_MS };
+module.exports = { SshTunnel, SSH_BIN, MAX_BACKOFF, FORWARD_TIMEOUT_MS };
