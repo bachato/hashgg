@@ -1113,15 +1113,28 @@ function renderBtcGuidance(d) {
     loadBlockA();
     els.btcGuidance.innerHTML = `
       <p><strong>StartOS can do this itself, and does it better than HashGG could.</strong>
-      It preserves each peer's real IP address, and configures your node for you.</p>
-      <p>You will need a second VPS running <strong>StartTunnel</strong> — separate from the one
-      carrying your mining tunnel, because StartTunnel takes over the firewall on whatever
-      machine it runs on.</p>
-      <p class="hint">HashGG writes the commands for you below — StartOS then opens the port
-      and tells your node to advertise it, so there is no config line to paste.</p>
-      <p class="hint"><strong>No VPS needed if your ISP doesn't use CGNAT:</strong> forward the port
-      on your router and switch on the router gateway's public IP instead. That exposes your home
-      IP, which the VPS route avoids — a real trade, not a worse option.</p>`;
+      It keeps each peer's real address, and sets up your node for you.</p>
+
+      <div class="hint-box">
+        <p><strong>Check this first — you may not need any of it.</strong></p>
+        <p>Many home internet connections can already accept incoming connections. If yours
+        can, StartOS will do the whole thing for you, and <strong>you can ignore the rest of
+        this page</strong> — no VPS, nothing to buy, nothing to paste.</p>
+        <p>To find out, open your <strong>Bitcoin Knots</strong> service, go to
+        <strong>Interfaces → Peer</strong>, and see whether a <strong>public IP address</strong>
+        is listed. If one is, switch it on. That is the entire job.</p>
+        <p>If none is listed, your internet provider does not give you an address that can
+        receive connections, and the steps below are the way around that.</p>
+        <p class="hint">Worth knowing either way: using your own connection shows your home IP
+        address to the nodes that connect to you. The VPS steps below hide it. Neither is wrong
+        — pick whichever you prefer.</p>
+      </div>
+
+      <p>If you do need the steps below, you will need a <strong>second VPS</strong> running
+      <strong>StartTunnel</strong> — separate from the one carrying your mining tunnel, because
+      StartTunnel takes over the firewall on whatever machine it runs on.</p>
+      <p class="hint">HashGG writes the commands for you — StartOS then opens the port
+      and tells your node to advertise it, so there is no config line to paste.</p>`;
   } else {
     els.btcGuidance.innerHTML = `
       <p>On this version of StartOS, the Bitcoin package rewrites its configuration every time it
