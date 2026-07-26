@@ -1,11 +1,13 @@
 'use strict';
 
-const { spawn } = require('child_process');
-const fs = require('fs');
+// VPS mode: the stratum tunnel. A thin consumer of SshTunnel — this module owns
+// the state coupling (what to forward, what to publish), the tunnel class owns
+// process supervision.
+
 const EventEmitter = require('events');
 const state = require('./state');
+const { SshTunnel } = require('./ssh-tunnel');
 
-const SSH_BIN = '/usr/bin/ssh';
 const KEY_FILE = '/root/data/vps_ssh_key';
 const KNOWN_HOSTS_FILE = '/root/data/vps_known_hosts';
 // Port that socat listens on inside the container — where the SSH reverse tunnel
@@ -14,221 +16,68 @@ const KNOWN_HOSTS_FILE = '/root/data/vps_known_hosts';
 // default, but since v0.4.0.0 we honor DATUM_STRATUM_PORT from env (Umbrel sets
 // 23334, for example) — so re-read it.
 const LOCAL_STRATUM_PORT = parseInt(process.env.LISTEN_PORT || process.env.DATUM_STRATUM_PORT, 10) || 23335;
-const MAX_BACKOFF = 60000;
-const STABLE_AFTER_MS = 5000;
 
 class VpsManager extends EventEmitter {
   constructor() {
     super();
-    this.process = null;
-    this.generation = 0;
-    this.status = 'disconnected';
-    this.backoff = 2000;
-    this.restartTimer = null;
-    this.stableTimer = null;
-    this.reconfigureTimer = null;
-    this.upSince = null;
-  }
 
-  start() {
-    const s = state.get();
-    if (!s.vps_host || !s.vps_ssh_private_key) {
-      console.log('[vps] Not configured, skipping start');
-      return;
-    }
-    if (this.process) {
-      console.log('[vps] Already running');
-      return;
-    }
+    this.tunnel = new SshTunnel({
+      name: 'vps',
+      keyFile: KEY_FILE,
+      knownHostsFile: KNOWN_HOSTS_FILE,
+      getConfig: () => {
+        const s = state.get();
+        if (!s.vps_host || !s.vps_ssh_private_key) return null;
 
-    // Write private key file (chmod 600)
-    try {
-      fs.writeFileSync(KEY_FILE, s.vps_ssh_private_key, { mode: 0o600 });
-    } catch (err) {
-      console.error(`[vps] Failed to write key file: ${err.message}`);
-      this._setStatus('error', 'Failed to write SSH key file');
-      this._scheduleRestart();
-      return;
-    }
+        // Primary forward: VPS public port → our socat (which fronts Datum).
+        const forwards = [
+          `0.0.0.0:${s.vps_remote_port || 23335}:127.0.0.1:${LOCAL_STRATUM_PORT}`,
+        ];
+        // Additional miners: one reverse forward each, to that connection's local
+        // socat bridge (127.0.0.1:listen_port) — same pattern as the primary.
+        // socat handles the hop to the user's actual stratum (IP or hostname).
+        for (const c of (s.extra_connections || [])) {
+          if (c.remote_port && c.listen_port) {
+            forwards.push(`0.0.0.0:${c.remote_port}:127.0.0.1:${c.listen_port}`);
+          }
+        }
 
-    this.generation++;
-    const gen = this.generation;
-
-    this._setStatus('connecting', null);
-
-    const sshPort = String(s.vps_ssh_port || 22);
-    const sshUser = s.vps_ssh_user || 'hashgg';
-    const remotePort = String(s.vps_remote_port || 23335);
-    // Primary forward: VPS public port → our socat (which fronts Datum).
-    const forwards = [`0.0.0.0:${remotePort}:127.0.0.1:${LOCAL_STRATUM_PORT}`];
-    // Additional miners: one reverse forward each, to that connection's local socat
-    // bridge (127.0.0.1:listen_port) — same pattern as the primary. socat handles
-    // the hop to the user's actual stratum (IP or hostname).
-    for (const c of (s.extra_connections || [])) {
-      if (c.remote_port && c.listen_port) {
-        forwards.push(`0.0.0.0:${c.remote_port}:127.0.0.1:${c.listen_port}`);
-      }
-    }
-    // IPv6 addresses require bracket notation in SSH user@host form
-    const sshHost = s.vps_host.includes(':') ? `[${s.vps_host}]` : s.vps_host;
-
-    const args = [
-      '-N',
-      '-o', 'StrictHostKeyChecking=accept-new',
-      '-o', `UserKnownHostsFile=${KNOWN_HOSTS_FILE}`,
-      '-o', 'ServerAliveInterval=30',
-      '-o', 'ServerAliveCountMax=3',
-      '-o', 'ConnectTimeout=30',
-      '-o', 'ExitOnForwardFailure=yes',
-      '-o', 'BatchMode=yes',
-      '-i', KEY_FILE,
-    ];
-    for (const spec of forwards) args.push('-R', spec);
-    args.push('-p', sshPort, `${sshUser}@${sshHost}`);
-
-    console.log(`[vps] Connecting to ${sshUser}@${s.vps_host}:${sshPort} (forwards: ${forwards.join(', ')})`);
-
-    const proc = spawn(SSH_BIN, args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    this.process = proc;
-
-    let lastStderr = '';
-
-    proc.stdout.on('data', (data) => {
-      const line = data.toString().trim();
-      if (line) console.log(`[vps:out] ${line}`);
-    });
-
-    proc.stderr.on('data', (data) => {
-      const line = data.toString().trim();
-      if (line) {
-        console.log(`[vps:err] ${line}`);
-        lastStderr = line;
-      }
-    });
-
-    proc.on('error', (err) => {
-      if (this.generation !== gen) return;
-      console.error(`[vps] Spawn error: ${err.message}`);
-      this._clearStable();
-      this.process = null;
-      this._setStatus('error', err.message);
-      this._scheduleRestart();
-    });
-
-    proc.on('close', (code) => {
-      if (this.generation !== gen) {
-        console.log(`[vps] Stale process (gen ${gen}) exited, ignoring`);
-        return;
-      }
-      console.log(`[vps] SSH exited with code ${code}`);
-      this._clearStable();
-      this.process = null;
-      if (this.status !== 'disconnected') {
-        const errMsg = lastStderr || `SSH exited (code ${code})`;
-        this._setStatus('error', errMsg);
-        state.update({ public_endpoint: null });
-        this._scheduleRestart();
-      }
-    });
-
-    // Mark stable (connected) after STABLE_AFTER_MS if process is still alive
-    this.stableTimer = setTimeout(() => {
-      this.stableTimer = null;
-      if (this.generation === gen && this.process && this.status === 'connecting') {
-        console.log('[vps] SSH tunnel stable — marking connected');
-        this.backoff = 2000;
-        this.upSince = Date.now();
-        this._setStatus('connected', null);
-        // Publish the public endpoint and mark host key as verified
-        const s2 = state.get();
+        return {
+          host: s.vps_host,
+          port: s.vps_ssh_port || 22,
+          user: s.vps_ssh_user || 'hashgg',
+          privateKey: s.vps_ssh_private_key,
+          forwards,
+        };
+      },
+      onStable: () => {
+        // Publish the public endpoint and mark the host key as verified.
+        const s = state.get();
         state.update({
-          public_endpoint: `${s2.vps_host}:${s2.vps_remote_port || 23335}`,
+          public_endpoint: `${s.vps_host}:${s.vps_remote_port || 23335}`,
           vps_host_key_verified: true,
         });
-      }
-    }, STABLE_AFTER_MS);
+      },
+      onStatus: (status, errorMsg) => {
+        const patch = { vps_tunnel_status: status };
+        if (errorMsg) patch.vps_last_error = errorMsg;
+        if (status === 'connected') patch.vps_last_error = null;
+        // Losing the tunnel means the advertised endpoint is no longer valid.
+        if (status === 'error' || status === 'disconnected') patch.public_endpoint = null;
+        state.update(patch);
+        this.emit('status', status);
+      },
+    });
   }
 
-  stop() {
-    this._clearRestart();
-    this._clearStable();
-    // A direct stop (disconnect/reset/shutdown) cancels any pending debounced
-    // reconfigure so we don't silently reconnect afterwards.
-    if (this.reconfigureTimer) { clearTimeout(this.reconfigureTimer); this.reconfigureTimer = null; }
-    if (this.process) {
-      this._setStatus('disconnected', null);
-      const proc = this.process;
-      this.process = null;
-      this.generation++;
-      // Force-kill via the process HANDLE (not a raw PID) after 5s if it hasn't
-      // exited — killing by PID risks hitting a reused PID after a fast restart.
-      let exited = false;
-      proc.once('exit', () => { exited = true; });
-      proc.kill('SIGTERM');
-      setTimeout(() => {
-        if (!exited) { try { proc.kill('SIGKILL'); } catch (_) {} }
-      }, 5000).unref();
-    } else {
-      this._setStatus('disconnected', null);
-    }
-    this.upSince = null;
-    state.update({ public_endpoint: null });
-  }
+  // `status` is read directly elsewhere (server.js, connections.js), so keep it
+  // exposed as a plain property rather than making callers reach into .tunnel.
+  get status() { return this.tunnel.status; }
 
-  restart() {
-    // Debounce: several connection add/removes in quick succession coalesce into a
-    // single stop→start, so the shared tunnel reconnects once instead of flapping.
-    if (this.reconfigureTimer) clearTimeout(this.reconfigureTimer);
-    this.reconfigureTimer = setTimeout(() => {
-      this.reconfigureTimer = null;
-      this.stop();
-      setTimeout(() => this.start(), 1000);
-    }, 600);
-  }
-
-  getUptime() {
-    if (!this.upSince) return 0;
-    return Math.floor((Date.now() - this.upSince) / 1000);
-  }
-
-  _setStatus(status, errorMsg) {
-    this.status = status;
-    const patch = { vps_tunnel_status: status };
-    if (errorMsg !== undefined && errorMsg !== null) {
-      patch.vps_last_error = errorMsg;
-    }
-    if (status === 'connected') {
-      patch.vps_last_error = null;
-    }
-    state.update(patch);
-    this.emit('status', status);
-  }
-
-  _scheduleRestart() {
-    this._clearRestart();
-    console.log(`[vps] Restarting in ${this.backoff}ms...`);
-    this.restartTimer = setTimeout(() => {
-      this.restartTimer = null;
-      this.start();
-    }, this.backoff);
-    this.backoff = Math.min(this.backoff * 2, MAX_BACKOFF);
-  }
-
-  _clearRestart() {
-    if (this.restartTimer) {
-      clearTimeout(this.restartTimer);
-      this.restartTimer = null;
-    }
-  }
-
-  _clearStable() {
-    if (this.stableTimer) {
-      clearTimeout(this.stableTimer);
-      this.stableTimer = null;
-    }
-  }
+  start() { this.tunnel.start(); }
+  stop() { this.tunnel.stop(); }
+  restart() { this.tunnel.restart(); }
+  getUptime() { return this.tunnel.getUptime(); }
 }
 
 module.exports = new VpsManager();

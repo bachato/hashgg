@@ -46,7 +46,7 @@ function freshInitial() {
 
 function ensureDir() {
   if (!fs.existsSync(STATE_DIR)) {
-    fs.mkdirSync(STATE_DIR, { recursive: true });
+    fs.mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 });
   }
 }
 
@@ -54,6 +54,10 @@ function load() {
   ensureDir();
   try {
     const raw = fs.readFileSync(STATE_FILE, 'utf8');
+    // Tighten an existing file created before we started writing 0600. save()
+    // would fix it on the next write, but an idle install might not write for a
+    // long time, and the file holds the SSH private key — so narrow it on sight.
+    try { fs.chmodSync(STATE_FILE, 0o600); } catch (_) {}
     currentState = JSON.parse(raw);
     if (!currentState || typeof currentState !== 'object') {
       throw new Error('Invalid state format');
@@ -93,11 +97,20 @@ function save() {
   // fs) must not throw out of update() — many callers are inside child-process
   // event handlers where an uncaught throw would crash the supervisor. Atomic
   // temp+rename so a partial write never corrupts the live file.
+  // This file holds secrets — the VPS SSH private key and the playit agent key —
+  // and on Umbrel it lives in a host directory (app-data/…/data) readable by any
+  // local user, not just inside the container. Write it 0600.
+  //
+  // The mode is set explicitly with chmod rather than relying on writeFileSync's
+  // `mode`, which is ignored when the temp file already exists (a leftover from a
+  // crashed write would keep its old, wider mode). Both happen before the rename,
+  // so the live file is never briefly world-readable.
   try {
     ensureDir();
     currentState.last_updated = new Date().toISOString();
     const tmp = STATE_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(currentState, null, 2), 'utf8');
+    fs.writeFileSync(tmp, JSON.stringify(currentState, null, 2), { encoding: 'utf8', mode: 0o600 });
+    fs.chmodSync(tmp, 0o600);
     fs.renameSync(tmp, STATE_FILE);
   } catch (err) {
     console.error(`[state] Failed to persist state: ${err.message}`);
