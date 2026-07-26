@@ -44,6 +44,11 @@ const INITIAL_STATE = {
   btc_p2p_vps_host: null,
   btc_p2p_vps_ssh_port: 22,
   btc_p2p_vps_ssh_user: 'hashgg',
+  // Its own copy of the key, not a reference to vps_ssh_private_key. Same key
+  // material — we mint one keypair — but an independent lifetime: /api/vps/reset
+  // nulls the stratum key, which would otherwise leave this tunnel unable to
+  // reconnect after any restart. Same reasoning as storing the host.
+  btc_p2p_vps_private_key: null,
   btc_p2p_tunnel_status: 'disconnected',
   btc_p2p_last_error: null,
   btc_p2p_advertised_for_host: null,  // host at the time the user acked the config line

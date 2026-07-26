@@ -13,6 +13,7 @@ const connections = require('./connections');
 const vpsManager = require('./vps-manager');
 const sshKeygenHelper = require('./ssh-keygen-helper');
 const bitcoinP2p = require('./bitcoin-p2p');
+const btcP2pManager = require('./btc-p2p-manager');
 
 const PORT = 3000;
 const FRONTEND_DIR = '/usr/local/lib/hashgg/frontend';
@@ -222,6 +223,13 @@ async function handleApi(req, res) {
   if (pathname === '/api/reset' && req.method === 'POST') {
     playitManager.stop();
     vpsManager.stop(); // defensive — in case state had leftover VPS data
+    // Capture the cleanup reminder before state.reset() destroys the fields that
+    // describe it — the user still has to remove the line from their node.
+    const sBefore = state.get();
+    const btcCleanup = sBefore.btc_p2p_acked && sBefore.btc_p2p_advertised_for_host
+      ? { externalip_line: `externalip=${sBefore.btc_p2p_advertised_for_host}:${sBefore.btc_p2p_remote_port || 8333}` }
+      : null;
+    btcP2pManager.stop();
     tunnelStatus.stopPolling();
     connections.stopPolling();
     // Delete additional-miner tunnels from the playit account so they don't leak
@@ -232,8 +240,10 @@ async function handleApi(req, res) {
     // Clean up any VPS artifacts too (defensive — in case state had leftover VPS data)
     try { require('fs').unlinkSync('/root/data/vps_ssh_key'); } catch (_) {}
     try { require('fs').unlinkSync('/root/data/vps_known_hosts'); } catch (_) {}
+    try { require('fs').unlinkSync('/root/data/btc_p2p_ssh_key'); } catch (_) {}
+    try { require('fs').unlinkSync('/root/data/btc_p2p_known_hosts'); } catch (_) {}
     state.reset();
-    sendJson(res, 200, { ok: true });
+    sendJson(res, 200, { ok: true, btc_cleanup: btcCleanup });
     return;
   }
 
@@ -298,6 +308,138 @@ async function handleApi(req, res) {
       advertising: null,
       inbound_peers: null,
     });
+    return;
+  }
+
+  // POST /api/btc/enable — { remote_port?, target_host?, target_port?, vps_host? }
+  if (pathname === '/api/btc/enable' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const s = state.get();
+    const patch = {};
+
+    if (platformCapability(detectPlatform()) !== 'full') {
+      sendJson(res, 400, { error: 'This platform uses a different path — see the dashboard for guidance.' });
+      return;
+    }
+
+    if (body.remote_port !== undefined) {
+      const p = Number(body.remote_port);
+      if (isNaN(p) || p < 1024 || p > 65535) {
+        sendJson(res, 400, { error: 'Port must be 1024–65535' });
+        return;
+      }
+      patch.btc_p2p_remote_port = p;
+    }
+
+    // Manual override — "my Bitcoin node is somewhere else".
+    if (body.target_host !== undefined) {
+      const h = (body.target_host || '').toString().trim();
+      if (h) {
+        // Same idiom as /api/vps/configure: these values reach an ssh argv, and
+        // the host is also rendered into copyable config text, so a newline here
+        // would let extra bitcoin.conf directives ride along.
+        if (h[0] === '-' || !/^[a-zA-Z0-9.\-:]+$/.test(h) || h.length > 255) {
+          sendJson(res, 400, { error: 'Please enter a valid node address' });
+          return;
+        }
+        const tp = Number(body.target_port);
+        if (isNaN(tp) || tp < 1 || tp > 65535) {
+          sendJson(res, 400, { error: 'Node port must be 1–65535' });
+          return;
+        }
+        try { bitcoinP2p.assertAllowedTarget(h, tp); }
+        catch (err) { sendJson(res, 400, { error: err.message }); return; }
+        patch.btc_p2p_target_host = h;
+        patch.btc_p2p_target_port = tp;
+      } else {
+        patch.btc_p2p_target_host = null;
+        patch.btc_p2p_target_port = null;
+      }
+    }
+
+    // Which VPS carries this. Defaults to the stratum VPS when there is one —
+    // the "use my existing HashGG VPS" shortcut. A dedicated P2P VPS gets its
+    // own onboarding; until then an explicit vps_host is accepted.
+    let vpsHost = body.vps_host !== undefined ? (body.vps_host || '').toString().trim() : null;
+    if (vpsHost) {
+      if (vpsHost[0] === '-' || !/^[a-zA-Z0-9.\-:]+$/.test(vpsHost) || vpsHost.length > 255) {
+        sendJson(res, 400, { error: 'Please enter a valid VPS address' });
+        return;
+      }
+      patch.btc_p2p_vps_host = vpsHost;
+      patch.btc_p2p_vps_source = 'own';
+    } else if (!s.btc_p2p_vps_host) {
+      if (!s.vps_host) {
+        sendJson(res, 400, { error: 'No VPS available yet. Set one up first.' });
+        return;
+      }
+      // Resolve and STORE it, rather than reading vps_host later — a stratum
+      // reset or a mode switch must not be able to orphan this tunnel.
+      patch.btc_p2p_vps_host = s.vps_host;
+      patch.btc_p2p_vps_ssh_port = s.vps_ssh_port || 22;
+      patch.btc_p2p_vps_ssh_user = s.vps_ssh_user || 'hashgg';
+      patch.btc_p2p_vps_source = 'shared';
+    }
+
+    // Take our own copy of the key. One keypair is minted for the machine, but
+    // this record must not depend on the stratum record's copy — /api/vps/reset
+    // nulls that, which would leave this tunnel unable to reconnect.
+    const merged = { ...s, ...patch };
+    if (!merged.btc_p2p_vps_private_key) {
+      let key = merged.vps_ssh_private_key;
+      if (!key) {
+        // playit-mode install that has never set up a VPS — mint the keypair now.
+        const kp = sshKeygenHelper.generateKeyPair();
+        state.update({ vps_ssh_private_key: kp.privateKeyPem, vps_ssh_public_key: kp.publicKeyOpenSSH });
+        key = kp.privateKeyPem;
+      }
+      patch.btc_p2p_vps_private_key = key;
+    }
+
+    if (Object.keys(patch).length) state.update(patch);
+
+    try {
+      await btcP2pManager.enable();
+      sendJson(res, 200, { ok: true });
+    } catch (err) {
+      state.update({ btc_p2p_enabled: false });
+      sendJson(res, 400, { error: err.message });
+    }
+    return;
+  }
+
+  // POST /api/btc/disable
+  if (pathname === '/api/btc/disable' && req.method === 'POST') {
+    btcP2pManager.disable();
+    const s = state.get();
+    sendJson(res, 200, {
+      ok: true,
+      // The user has to undo the half we cannot: the line in their node's config.
+      cleanup: {
+        externalip_line: s.btc_p2p_advertised_for_host
+          ? `externalip=${s.btc_p2p_advertised_for_host}:${s.btc_p2p_remote_port || 8333}`
+          : null,
+        remote_port: s.btc_p2p_remote_port || 8333,
+      },
+    });
+    return;
+  }
+
+  // POST /api/btc/ack — the user says they've pasted the config line
+  if (pathname === '/api/btc/ack' && req.method === 'POST') {
+    const s = state.get();
+    state.update({
+      btc_p2p_acked: true,
+      btc_p2p_advertised_for_host: s.btc_p2p_vps_host || null,
+    });
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // POST /api/btc/verify — dial our own public endpoint from the internet side
+  if (pathname === '/api/btc/verify' && req.method === 'POST') {
+    const r = await btcP2pManager.verify();
+    sendJson(res, 200, r);
     return;
   }
 
@@ -1026,6 +1168,11 @@ function main() {
     connections.startPolling();
   }
 
+  // Bitcoin P2P tunnel — deliberately NOT gated on tunnel_mode. It owns its own
+  // VPS record, so a playit-mode install can still be running it.
+  btcP2pManager.resumeIfEnabled().catch((err) =>
+    console.error(`[btc-p2p] resume failed: ${err.message}`));
+
   // Watch for mode/claim changes driven from the UI:
   //  - fresh install picks 'playit' → completes claim → start playitd
   //  - existing install switches mode → start the right manager
@@ -1057,6 +1204,7 @@ function main() {
     console.log(`[server] Received ${signal}, shutting down...`);
     try { playitManager.stop(); } catch (_) {}
     try { vpsManager.stop(); } catch (_) {}
+    try { btcP2pManager.stop(); } catch (_) {}
     try { tunnelStatus.stopPolling(); } catch (_) {}
     try { connections.stopPolling(); } catch (_) {}
     server.close(() => process.exit(0));
