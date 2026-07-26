@@ -443,6 +443,135 @@ async function handleApi(req, res) {
     return;
   }
 
+  // --- The P2P tunnel's own VPS record ---
+  //
+  // Separate routes rather than a `scope` parameter on /api/vps/*: putting the
+  // mining path one bad branch away from breakage is not worth the saved lines.
+
+  // POST /api/btc/vps/configure — { host, ssh_port?, ssh_user?, source }
+  if (pathname === '/api/btc/vps/configure' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const s = state.get();
+    const patch = {};
+
+    if (body.source === 'shared') {
+      if (!s.vps_host) {
+        sendJson(res, 400, { error: 'You do not have a HashGG VPS set up yet.' });
+        return;
+      }
+      // Copy, never reference: a later stratum reset must not orphan this.
+      patch.btc_p2p_vps_host = s.vps_host;
+      patch.btc_p2p_vps_ssh_port = s.vps_ssh_port || 22;
+      patch.btc_p2p_vps_ssh_user = s.vps_ssh_user || 'hashgg';
+      patch.btc_p2p_vps_source = 'shared';
+    } else {
+      const host = (body.host || '').toString().trim();
+      if (!host || host[0] === '-' || !/^[a-zA-Z0-9.\-:]+$/.test(host) || host.length > 255) {
+        sendJson(res, 400, { error: 'Please enter a valid VPS address' });
+        return;
+      }
+      const sshPort = body.ssh_port !== undefined ? Number(body.ssh_port) : 22;
+      if (isNaN(sshPort) || sshPort < 1 || sshPort > 65535) {
+        sendJson(res, 400, { error: 'SSH port must be 1–65535' });
+        return;
+      }
+      const sshUser = body.ssh_user !== undefined ? String(body.ssh_user) : 'hashgg';
+      if (!/^[a-z_][a-z0-9_\-]{0,31}$/.test(sshUser)) {
+        sendJson(res, 400, { error: 'Invalid SSH user' });
+        return;
+      }
+      patch.btc_p2p_vps_host = host;
+      patch.btc_p2p_vps_ssh_port = sshPort;
+      patch.btc_p2p_vps_ssh_user = sshUser;
+      patch.btc_p2p_vps_source = 'own';
+    }
+
+    // Make sure a keypair exists and this record owns a copy of it.
+    let key = s.vps_ssh_private_key;
+    if (!key) {
+      const kp = sshKeygenHelper.generateKeyPair();
+      state.update({ vps_ssh_private_key: kp.privateKeyPem, vps_ssh_public_key: kp.publicKeyOpenSSH });
+      key = kp.privateKeyPem;
+    }
+    patch.btc_p2p_vps_private_key = key;
+
+    state.update(patch);
+    sendJson(res, 200, { ok: true, host: patch.btc_p2p_vps_host, source: patch.btc_p2p_vps_source });
+    return;
+  }
+
+  // GET /api/btc/vps/setup-script — for the P2P VPS specifically
+  if (pathname === '/api/btc/vps/setup-script' && req.method === 'GET') {
+    let s = state.get();
+    if (!s.vps_ssh_public_key || !s.vps_ssh_private_key) {
+      const kp = sshKeygenHelper.generateKeyPair();
+      state.update({ vps_ssh_private_key: kp.privateKeyPem, vps_ssh_public_key: kp.publicKeyOpenSSH });
+      s = state.get();
+    }
+    const script = buildSetupScript(
+      s.vps_ssh_public_key,
+      [s.btc_p2p_remote_port || 8333],
+      s.btc_p2p_vps_host
+    );
+    sendJson(res, 200, { script, host: s.btc_p2p_vps_host || null });
+    return;
+  }
+
+  // GET /api/btc/vps/teardown-script
+  if (pathname === '/api/btc/vps/teardown-script' && req.method === 'GET') {
+    const s = state.get();
+    sendJson(res, 200, {
+      script: buildTeardownScript([s.btc_p2p_remote_port || 8333], s.btc_p2p_vps_host),
+      host: s.btc_p2p_vps_host || null,
+    });
+    return;
+  }
+
+  // POST /api/btc/vps/test-connection
+  if (pathname === '/api/btc/vps/test-connection' && req.method === 'POST') {
+    const s = state.get();
+    if (!s.btc_p2p_vps_host) {
+      sendJson(res, 400, { error: 'No VPS configured yet' });
+      return;
+    }
+    // Reuse the stratum SSH auth probe against this record's values.
+    const result = await testVpsSshAuth({
+      vps_host: s.btc_p2p_vps_host,
+      vps_ssh_port: s.btc_p2p_vps_ssh_port || 22,
+      vps_ssh_user: s.btc_p2p_vps_ssh_user || 'hashgg',
+      vps_ssh_private_key: s.btc_p2p_vps_private_key || s.vps_ssh_private_key,
+    });
+    sendJson(res, 200, result);
+    return;
+  }
+
+  // POST /api/btc/vps/reset — clears THIS record only, never the stratum one
+  if (pathname === '/api/btc/vps/reset' && req.method === 'POST') {
+    btcP2pManager.stop();
+    try { require('fs').unlinkSync('/root/data/btc_p2p_ssh_key'); } catch (_) {}
+    try { require('fs').unlinkSync('/root/data/btc_p2p_known_hosts'); } catch (_) {}
+    const s = state.get();
+    const cleanup = s.btc_p2p_acked && s.btc_p2p_advertised_for_host
+      ? { externalip_line: `externalip=${s.btc_p2p_advertised_for_host}:${s.btc_p2p_remote_port || 8333}` }
+      : null;
+    state.update({
+      btc_p2p_enabled: false,
+      btc_p2p_vps_host: null,
+      btc_p2p_vps_ssh_port: 22,
+      btc_p2p_vps_ssh_user: 'hashgg',
+      btc_p2p_vps_private_key: null,
+      btc_p2p_vps_source: null,
+      btc_p2p_tunnel_status: 'disconnected',
+      btc_p2p_last_error: null,
+      btc_p2p_acked: false,
+      btc_p2p_advertised_for_host: null,
+      btc_p2p_verified_at: null,
+      btc_p2p_verified_agent: null,
+    });
+    sendJson(res, 200, { ok: true, cleanup });
+    return;
+  }
+
   // --- Playit.gg account cleanup ---
 
   // GET /api/playit/cleanup/scan — find orphan HashGG tunnels from old installs
@@ -582,8 +711,18 @@ async function handleApi(req, res) {
       state.update({ vps_ssh_private_key: privateKeyPem, vps_ssh_public_key: publicKeyOpenSSH });
       s = state.get();
     }
-    const remotePort = s.vps_remote_port || 23335;
-    const script = buildSetupScript(s.vps_ssh_public_key, remotePort);
+    // Every port HashGG needs on THIS machine: stratum, each additional miner,
+    // and the Bitcoin P2P port when that tunnel shares this VPS. Re-running the
+    // script should leave the box fully configured, not just for stratum.
+    const ports = [s.vps_remote_port || 23335];
+    for (const c of (s.extra_connections || [])) {
+      if (c.remote_port && !ports.includes(c.remote_port)) ports.push(c.remote_port);
+    }
+    if (s.btc_p2p_enabled && s.btc_p2p_vps_host && s.btc_p2p_vps_host === s.vps_host) {
+      const p = s.btc_p2p_remote_port || 8333;
+      if (!ports.includes(p)) ports.push(p);
+    }
+    const script = buildSetupScript(s.vps_ssh_public_key, ports, s.vps_host);
     sendJson(res, 200, { script });
     return;
   }
@@ -596,7 +735,11 @@ async function handleApi(req, res) {
     for (const c of (s.extra_connections || [])) {
       if (c.remote_port && !ports.includes(c.remote_port)) ports.push(c.remote_port);
     }
-    const script = buildTeardownScript(ports);
+    if (s.btc_p2p_enabled && s.btc_p2p_vps_host === s.vps_host) {
+      const p = s.btc_p2p_remote_port || 8333;
+      if (!ports.includes(p)) ports.push(p);
+    }
+    const script = buildTeardownScript(ports, s.vps_host);
     sendJson(res, 200, { script });
     return;
   }
@@ -874,13 +1017,32 @@ async function handleRequest(req, res) {
   }
 }
 
-// Generate the VPS setup script with the public key and stratum port embedded
-function buildSetupScript(publicKey, stratumPort) {
+// Generate the VPS setup script. `ports` is every port HashGG needs opened on
+// this machine; `targetHost` is the address it is meant for, which the script
+// echoes and sanity-checks — with two VPSes in play, pasting the wrong script
+// into the wrong shell would reconfigure a machine that is still in use.
+function buildSetupScript(publicKey, ports, targetHost) {
+  const portList = (Array.isArray(ports) ? ports : [ports]).filter(Boolean).join(' ');
   return `#!/bin/bash
 set -euo pipefail
 
 HASHGG_PUBKEY="${publicKey}"
-STRATUM_PORT="${stratumPort}"
+STRATUM_PORTS="${portList}"
+EXPECTED_HOST="${targetHost || ''}"
+
+echo "=== This script is for: \${EXPECTED_HOST:-(unspecified)} ==="
+# Warn, never block: plenty of providers NAT the public address, so a mismatch
+# is suspicious rather than proof of a mistake.
+if [ -n "$EXPECTED_HOST" ] && command -v ip >/dev/null 2>&1; then
+  if ! ip -4 addr 2>/dev/null | grep -qF " $EXPECTED_HOST/"; then
+    echo ""
+    echo "  !! WARNING: $EXPECTED_HOST is not an address on this machine."
+    echo "  !! If you have more than one VPS, check you are on the right one."
+    echo "  !! (Harmless if your provider NATs the public IP.)"
+    echo ""
+    sleep 3
+  fi
+fi
 SSH_USER="hashgg"
 SSH_HOME="/home/hashgg"
 SSHD_CONF_DIR="/etc/ssh/sshd_config.d"
@@ -971,16 +1133,18 @@ if ! sshd -t 2>/tmp/sshd-test.log; then
   exit 1
 fi
 
-# --- Open firewall port ---
-echo "Opening port $STRATUM_PORT/tcp in firewall..."
-if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
-  ufw allow "$STRATUM_PORT/tcp" comment "HashGG stratum" || true
-elif command -v firewall-cmd &>/dev/null; then
-  firewall-cmd --permanent --add-port="$STRATUM_PORT/tcp" --quiet 2>/dev/null || true
-  firewall-cmd --reload --quiet 2>/dev/null || true
-else
-  echo "(No active firewall detected — ensure port $STRATUM_PORT is open in your VPS provider firewall.)"
-fi
+# --- Open firewall ports ---
+for PORT in $STRATUM_PORTS; do
+  echo "Opening port $PORT/tcp in firewall..."
+  if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+    ufw allow "$PORT/tcp" comment "HashGG" || true
+  elif command -v firewall-cmd &>/dev/null; then
+    firewall-cmd --permanent --add-port="$PORT/tcp" --quiet 2>/dev/null || true
+  else
+    echo "(No active firewall detected — ensure port $PORT is open in your VPS provider firewall.)"
+  fi
+done
+command -v firewall-cmd &>/dev/null && firewall-cmd --reload --quiet 2>/dev/null || true
 
 # --- Restart sshd (reload may not pick up Match blocks correctly on all distros) ---
 echo "Restarting sshd..."
@@ -1014,8 +1178,8 @@ echo "Return to HashGG and click Test Connection."
 // the firewall rules for every port HashGG opened (primary + additional miners).
 // Best-effort and idempotent (safe to re-run; safe if some pieces are already
 // gone). Mirror of buildSetupScript.
-function buildTeardownScript(ports) {
-  const portList = (Array.isArray(ports) ? ports : [ports]).join(' ');
+function buildTeardownScript(ports, targetHost) {
+  const portList = (Array.isArray(ports) ? ports : [ports]).filter(Boolean).join(' ');
   return `#!/bin/bash
 # Best-effort cleanup — keep going even if individual steps fail.
 set -uo pipefail
@@ -1025,8 +1189,22 @@ SSH_HOME="/home/hashgg"
 SSHD_CONF_DIR="/etc/ssh/sshd_config.d"
 CONF_FILE="$SSHD_CONF_DIR/hashgg.conf"
 STRATUM_PORTS="${portList}"
+EXPECTED_HOST="${targetHost || ''}"
 
 echo "=== HashGG VPS Teardown ==="
+echo "=== This script is for: \${EXPECTED_HOST:-(unspecified)} ==="
+# Removing the hashgg user from the WRONG machine silently kills a tunnel that
+# is still in use, so say loudly which host this was generated for.
+if [ -n "$EXPECTED_HOST" ] && command -v ip >/dev/null 2>&1; then
+  if ! ip -4 addr 2>/dev/null | grep -qF " $EXPECTED_HOST/"; then
+    echo ""
+    echo "  !! WARNING: $EXPECTED_HOST is not an address on this machine."
+    echo "  !! Running this here will remove HashGG access from the WRONG VPS."
+    echo "  !! Press Ctrl-C now if you are not sure."
+    echo ""
+    sleep 5
+  fi
+fi
 
 # --- Remove the sshd drop-in config ---
 if [ -f "$CONF_FILE" ]; then
