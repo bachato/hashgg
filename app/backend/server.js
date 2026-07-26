@@ -15,6 +15,7 @@ const sshKeygenHelper = require('./ssh-keygen-helper');
 const bitcoinP2p = require('./bitcoin-p2p');
 const btcP2pManager = require('./btc-p2p-manager');
 const bitcoinRpc = require('./bitcoin-rpc');
+const startosBlocks = require('./startos-blocks');
 
 const PORT = 3000;
 const FRONTEND_DIR = '/usr/local/lib/hashgg/frontend';
@@ -460,6 +461,46 @@ async function handleApi(req, res) {
   if (pathname === '/api/btc/verify' && req.method === 'POST') {
     const r = await btcP2pManager.verify();
     sendJson(res, 200, r);
+    return;
+  }
+
+  // --- StartOS 0.4.0 guided setup ---
+  //
+  // HashGG generates; the user pastes. It never touches either machine, which
+  // keeps the privilege story the same as the stratum onboarding.
+
+  // GET /api/btc/startos/block-a — the VPS script
+  if (pathname === '/api/btc/startos/block-a' && req.method === 'GET') {
+    sendJson(res, 200, { script: startosBlocks.buildBlockA() });
+    return;
+  }
+
+  // POST /api/btc/startos/block-b — { wg_config } -> the StartOS commands
+  if (pathname === '/api/btc/startos/block-b' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const v = startosBlocks.validateWireGuardConfig(body.wg_config);
+    if (!v.ok) { sendJson(res, 400, { error: v.error }); return; }
+    // Remember the VPS address so the verify step can pre-fill it.
+    if (v.vpsHost) state.update({ btc_p2p_vps_host: v.vpsHost, btc_p2p_vps_source: 'startos' });
+    sendJson(res, 200, { script: startosBlocks.buildBlockB(v.config, v.vpsHost), vps_host: v.vpsHost });
+    return;
+  }
+
+  // POST /api/btc/startos/verify — { line } from the block's output
+  if (pathname === '/api/btc/startos/verify' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const p = startosBlocks.parseVerifyLine(body.line);
+    if (!p.ok) { sendJson(res, 400, { error: p.error }); return; }
+    const r = await bitcoinP2p.verifyPublic(p.host, p.port, null);
+    if (r.ok) {
+      state.update({
+        btc_p2p_vps_host: p.host,
+        btc_p2p_remote_port: p.port,
+        btc_p2p_verified_at: new Date().toISOString(),
+        btc_p2p_verified_agent: r.user_agent || null,
+      });
+    }
+    sendJson(res, 200, { ...r, host: p.host, port: p.port });
     return;
   }
 

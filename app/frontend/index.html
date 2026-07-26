@@ -260,6 +260,56 @@
 
           <!-- STATE C: platform can't do this, or does it natively -->
           <div id="btc-guidance" style="display:none;"></div>
+
+          <!-- STATE D: StartOS 0.4.0 — generated setup blocks -->
+          <div id="btc-startos" style="display:none;">
+            <ol class="btc-steps">
+              <li>
+                <div class="btc-step-head"><strong>Paste this into your new VPS</strong></div>
+                <p class="hint">As root, on a fresh Debian 12-or-newer VPS with a dedicated
+                public IPv4. It checks the machine first and stops if anything is wrong.</p>
+                <pre id="btc-block-a" class="script-pre">Loading…</pre>
+                <div class="actions">
+                  <button id="btn-btc-copy-a" class="btn btn-secondary btn-sm">Copy</button>
+                  <span id="btc-copy-a-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+                </div>
+              </li>
+
+              <li>
+                <div class="btc-step-head"><strong>Paste back what it printed</strong></div>
+                <p class="hint">Everything between the COPY lines — the WireGuard configuration.</p>
+                <textarea id="btc-wg-config" class="form-input btc-textarea" rows="10"
+                  placeholder="[Interface]&#10;Address = ...&#10;PrivateKey = ...&#10;&#10;[Peer]&#10;..."
+                  spellcheck="false"></textarea>
+                <div class="actions">
+                  <button id="btn-btc-make-b" class="btn btn-primary btn-sm">Continue</button>
+                  <span id="btc-b-status" class="test-status"></span>
+                </div>
+              </li>
+
+              <li id="btc-step-b" style="display:none;">
+                <div class="btc-step-head"><strong>Paste this into StartOS</strong></div>
+                <p class="hint">In a terminal on your StartOS server —
+                <code>ssh start9@your-server.local</code>. This registers the gateway and
+                switches on the public address.</p>
+                <pre id="btc-block-b" class="script-pre"></pre>
+                <div class="actions">
+                  <button id="btn-btc-copy-b" class="btn btn-secondary btn-sm">Copy</button>
+                  <span id="btc-copy-b-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+                </div>
+              </li>
+
+              <li id="btc-step-verify" style="display:none;">
+                <div class="btc-step-head"><strong>Check it worked</strong></div>
+                <p class="hint">Paste the <code>HASHGG_VERIFY</code> line it printed.</p>
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                  <input type="text" id="btc-verify-line" class="form-input" placeholder="HASHGG_VERIFY 203.0.113.7:8333" autocomplete="off" spellcheck="false">
+                  <button id="btn-btc-startos-verify" class="btn btn-primary btn-sm">Verify</button>
+                </div>
+                <p id="btc-startos-verify-status" class="test-status"></p>
+              </li>
+            </ol>
+          </div>
         </div>
       </details>
 

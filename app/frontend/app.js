@@ -69,6 +69,22 @@ const els = {
   btcAdvancedStatus: document.getElementById('btc-advanced-status'),
   btnBtcDisable: document.getElementById('btn-btc-disable'),
   btcCleanupNote: document.getElementById('btc-cleanup-note'),
+  // StartOS 0.4.0 guided flow
+  btcStartos: document.getElementById('btc-startos'),
+  btcBlockA: document.getElementById('btc-block-a'),
+  btnBtcCopyA: document.getElementById('btn-btc-copy-a'),
+  btcCopyAFeedback: document.getElementById('btc-copy-a-feedback'),
+  btcWgConfig: document.getElementById('btc-wg-config'),
+  btnBtcMakeB: document.getElementById('btn-btc-make-b'),
+  btcBStatus: document.getElementById('btc-b-status'),
+  btcStepB: document.getElementById('btc-step-b'),
+  btcBlockB: document.getElementById('btc-block-b'),
+  btnBtcCopyB: document.getElementById('btn-btc-copy-b'),
+  btcCopyBFeedback: document.getElementById('btc-copy-b-feedback'),
+  btcStepVerify: document.getElementById('btc-step-verify'),
+  btcVerifyLine: document.getElementById('btc-verify-line'),
+  btnBtcStartosVerify: document.getElementById('btn-btc-startos-verify'),
+  btcStartosVerifyStatus: document.getElementById('btc-startos-verify-status'),
   btnReset: document.getElementById('btn-reset'),
   // Cleanup (playit orphan tunnels)
   dashboardCleanupLink: document.getElementById('dashboard-cleanup-link'),
@@ -1028,20 +1044,17 @@ function renderBtcGuidance(d) {
   els.btcGuidance.style.display = 'block';
   els.btcSummaryNote.textContent = d.detected ? `· ${shortAgent(d.detected.user_agent)} found` : '';
 
+  els.btcStartos.style.display = (d.capability === 'guided') ? 'block' : 'none';
   if (d.capability === 'guided') {
+    loadBlockA();
     els.btcGuidance.innerHTML = `
       <p><strong>StartOS can do this itself, and does it better than HashGG could.</strong>
       It preserves each peer's real IP address, and configures your node for you.</p>
       <p>You will need a second VPS running <strong>StartTunnel</strong> — separate from the one
       carrying your mining tunnel, because StartTunnel takes over the firewall on whatever
       machine it runs on.</p>
-      <ol class="btc-steps">
-        <li>Install StartTunnel on a fresh Debian&nbsp;12-or-newer VPS with a dedicated public IPv4.</li>
-        <li>In StartOS: <strong>System → Gateways → Add</strong>, and paste the WireGuard config it gives you.</li>
-        <li>In <strong>Bitcoin Knots → Interfaces → Peer</strong>, switch on the gateway's public IP.</li>
-      </ol>
-      <p class="hint">StartOS then opens the port and tells your node to advertise it —
-      no config line to paste.</p>
+      <p class="hint">HashGG writes the commands for you below — StartOS then opens the port
+      and tells your node to advertise it, so there is no config line to paste.</p>
       <p class="hint"><strong>No VPS needed if your ISP doesn't use CGNAT:</strong> forward the port
       on your router and switch on the router gateway's public IP instead. That exposes your home
       IP, which the VPS route avoids — a real trade, not a worse option.</p>`;
@@ -1170,3 +1183,59 @@ els.btnBtcCopyFirewall.addEventListener('click', () =>
   copyText(els.btcFirewallCmd.textContent, els.btcCopyFwFeedback, els.btnBtcCopyFirewall));
 els.btnBtcCopyLine.addEventListener('click', () =>
   copyText(els.btcExternalipLine.textContent, els.btcCopyLineFeedback, els.btnBtcCopyLine));
+
+// --- StartOS 0.4.0: the generated setup blocks ------------------------------
+
+let btcBlockALoaded = false;
+
+async function loadBlockA() {
+  if (btcBlockALoaded) return;
+  try {
+    const r = await api('GET', '/btc/startos/block-a');
+    els.btcBlockA.textContent = r.script;
+    btcBlockALoaded = true;
+  } catch (err) {
+    els.btcBlockA.textContent = `Could not generate the script: ${err.message}`;
+  }
+}
+
+async function makeBlockB() {
+  const cfg = els.btcWgConfig.value;
+  if (!cfg.trim()) { setBtcStatus(els.btcBStatus, 'Paste the configuration first', 'err'); return; }
+  setBtcStatus(els.btcBStatus, 'Checking…', '');
+  try {
+    const r = await api('POST', '/btc/startos/block-b', { wg_config: cfg });
+    els.btcBlockB.textContent = r.script;
+    els.btcStepB.style.display = 'list-item';
+    els.btcStepVerify.style.display = 'list-item';
+    setBtcStatus(els.btcBStatus, '', '');
+  } catch (err) {
+    // Validation failures are the interesting case: the message explains what
+    // was wrong with the paste, not that "something failed".
+    setBtcStatus(els.btcBStatus, err.message, 'err');
+  }
+}
+
+async function startosVerify() {
+  const line = els.btcVerifyLine.value;
+  if (!line.trim()) { setBtcStatus(els.btcStartosVerifyStatus, 'Paste the line first', 'err'); return; }
+  setBtcStatus(els.btcStartosVerifyStatus, 'Checking from the internet…', '');
+  try {
+    const r = await api('POST', '/btc/startos/verify', { line });
+    if (r.ok) {
+      setBtcStatus(els.btcStartosVerifyStatus,
+        `Reachable at ${r.host}:${r.port} — ${shortAgent(r.user_agent)} answered. Your node is on clearnet.`, 'ok');
+    } else {
+      setBtcStatus(els.btcStartosVerifyStatus, verifyHint(r.error), 'err');
+    }
+  } catch (err) {
+    setBtcStatus(els.btcStartosVerifyStatus, err.message, 'err');
+  }
+}
+
+els.btnBtcMakeB.addEventListener('click', makeBlockB);
+els.btnBtcStartosVerify.addEventListener('click', startosVerify);
+els.btnBtcCopyA.addEventListener('click', () =>
+  copyText(els.btcBlockA.textContent, els.btcCopyAFeedback, els.btnBtcCopyA));
+els.btnBtcCopyB.addEventListener('click', () =>
+  copyText(els.btcBlockB.textContent, els.btcCopyBFeedback, els.btnBtcCopyB));
