@@ -116,7 +116,13 @@ When it finishes it prints the three addresses you need:
 
 Start with **Datum Gateway** — set your payout address and coinbase tag there first — then use **HashGG** to pick a tunnel (**playit.gg** or **VPS**) and point your miners at the public endpoint it gives you.
 
-> **Saving settings in Datum's dashboard.** Datum refuses to save from its web UI unless its config has *both* an admin password and `modify_conf` enabled — miss either and the form is read-only with no obvious explanation. The script checks for this and offers to turn it on, generating a password and showing it once (it lives in `~/.config/datum_gateway/datum_gateway.json` as `api.admin_password`). The username is `admin`. Datum's dashboard binds to `127.0.0.1` only, so it's reachable from that machine and nowhere else.
+> **Saving settings in Datum's dashboard — two gotchas.**
+>
+> First, Datum won't save from its web UI unless its config has *both* an admin password and `modify_conf` enabled. Miss either and the form is read-only with no obvious explanation. The script checks for this and offers to turn it on, generating a password and showing it once (it lives in `~/.config/datum_gateway/datum_gateway.json` as `api.admin_password`). The username is `admin`.
+>
+> Second, **Datum's settings page never prompts you to sign in.** Go straight to it and Save fails with *"This action requires admin access."* — because your browser has no credentials to send. Visit **`http://127.0.0.1:7152/clients`** first: that page does issue the login prompt. Sign in there, then return to the settings page and Save works.
+>
+> Datum's dashboard binds to `127.0.0.1` only, so it's reachable from that machine and nowhere else.
 
 **It never edits `bitcoin.conf`.** That file belongs to your node, so when a setting is missing the script prints the exact lines and waits while you paste them in and restart Knots.
 

@@ -487,6 +487,12 @@ ensure_datum_admin() {
     return 0
   fi
 
+  # Note for whoever reads this next: enabling these two is necessary but not
+  # sufficient. Datum's settings page itself never sends a 401, so a browser
+  # that lands straight on it has no credentials and the save POST is rejected.
+  # /clients is the page that issues the digest challenge. The finishing message
+  # spells this out — it is not obvious and the error text doesn't hint at it.
+
   say ""
   warn "Datum's dashboard won't let you save settings yet."
   say ""
@@ -860,13 +866,20 @@ cmd_up() {
   say "                    for miners on this machine or your LAN"
   say ""
 
-  if [ -n "$DATUM_ADMIN_PASSWORD_NEW" ]; then
-    say "  Datum sign-in     admin / $DATUM_ADMIN_PASSWORD_NEW"
-    say "                    generated just now; stored in $USER_DATUM_CONF"
+  if [ -n "$(json_get "$USER_DATUM_CONF" '.api.admin_password')" ]; then
+    say "  Sign in first     http://127.0.0.1:$aport/clients"
+    if [ -n "$DATUM_ADMIN_PASSWORD_NEW" ]; then
+      say "                    admin / $DATUM_ADMIN_PASSWORD_NEW"
+      say "                    (generated just now; kept in $USER_DATUM_CONF)"
+    else
+      say "                    username 'admin', password from api.admin_password in"
+      say "                    $USER_DATUM_CONF"
+    fi
     say ""
-  elif [ -n "$(json_get "$USER_DATUM_CONF" '.api.admin_password')" ]; then
-    say "  Datum sign-in     username 'admin'; password is api.admin_password in"
-    say "                    $USER_DATUM_CONF"
+    say "                    Datum's settings page never prompts for a password, so"
+    say "                    saving there fails with \"This action requires admin"
+    say "                    access\" until your browser has signed in somewhere that"
+    say "                    does. The /clients page above is the one that asks."
     say ""
   fi
 
