@@ -54,7 +54,22 @@ if (process.env.BITCOIN_P2P_WHITEBIND_PORT) {
   if (p > 0 && p < 65536) WHITEBIND_PORTS.add(p);
 }
 
+// Addresses that are never a legitimate Bitcoin node and exist only to make a
+// scanner useful. RFC1918 is deliberately NOT blocked — the real targets
+// (10.21.21.7 on Umbrel, bitcoind.startos) live there.
+function isForbiddenAddress(host) {
+  const h = String(host || '');
+  return /^169\.254\./.test(h)                 // link-local
+      || /^(22[4-9]|23[0-9])\./.test(h)         // multicast
+      || /^0\./.test(h)
+      || h === '255.255.255.255'
+      || /^\[?(fe80|ff0)/i.test(h);             // IPv6 link-local / multicast
+}
+
 function assertAllowedTarget(host, port) {
+  if (isForbiddenAddress(host)) {
+    throw new Error(`${host} is not a valid address for a Bitcoin node.`);
+  }
   if (WHITEBIND_PORTS.has(Number(port))) {
     throw new Error(
       `Port ${port} is your node's whitelisted-peer port. Forwarding it to the ` +
@@ -229,17 +244,40 @@ function candidateTargets(override) {
 }
 
 let detectCache = { at: 0, result: null };
+let detectInFlight = null;
 
 /**
- * Find the local Bitcoin node. Cached, because this is called from a UI poll.
- * Returns { ok: true, host, port, user_agent, ... } or { ok: false, error }.
+ * Find the local Bitcoin node.
+ *
+ * Non-blocking by default. A sweep costs one timeout per candidate — around 6 s
+ * when nothing answers — and this is called from a 3 s UI poll, so awaiting it
+ * would stall the dashboard every time the cache expired. Instead: serve the
+ * cached answer, refresh in the background, and report `pending` on the very
+ * first call so the UI can say "checking…" and fill in a moment later.
+ *
+ * Pass { force: true } when a real answer is required before acting — enabling
+ * the tunnel, for instance, must not proceed on a stale target.
  */
 async function detectLocalNode(opts = {}) {
   const now = Date.now();
-  if (!opts.force && detectCache.result && now - detectCache.at < DETECT_CACHE_MS) {
-    return detectCache.result;
-  }
+  const fresh = detectCache.result && now - detectCache.at < DETECT_CACHE_MS;
 
+  if (fresh && !opts.force) return detectCache.result;
+  if (opts.force) return sweep(opts);
+
+  if (!detectInFlight) {
+    detectInFlight = sweep(opts)
+      .catch(() => null)
+      .finally(() => { detectInFlight = null; });
+  }
+  // Stale is better than slow — the topology rarely changes, and a caller that
+  // needs certainty passes force.
+  if (detectCache.result) return detectCache.result;
+  return { ok: false, pending: true, error: 'checking for a Bitcoin node…' };
+}
+
+async function sweep(opts = {}) {
+  const now = Date.now();
   // Report the FIRST candidate's failure, not the last. The list is ordered by
   // authority — an explicit override, then the port the platform declares, then
   // generic fallbacks — so the first entry is the one that was supposed to work
@@ -293,6 +331,7 @@ async function verifyPublic(host, port, expect) {
 
 module.exports = {
   handshake,
+  isForbiddenAddress,
   detectLocalNode,
   clearDetectCache,
   verifyPublic,

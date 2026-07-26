@@ -79,6 +79,30 @@ function detectPlatform() {
   return 'docker';
 }
 
+// Host validation, in one place. These values reach an `ssh` argv AND are
+// rendered into text the user copies into their node's configuration, so a
+// newline here would let extra directives ride along. Both uses need it, which
+// is why it is not phrased as "because it reaches a shell".
+function isValidHost(h) {
+  return typeof h === 'string' && h.length > 0 && h.length <= 255
+      && h[0] !== '-' && /^[a-zA-Z0-9.\-:]+$/.test(h)
+      && !bitcoinP2p.isForbiddenAddress(h);
+}
+
+// Crude per-endpoint throttle. These endpoints dial arbitrary hosts on behalf of
+// the caller, and the dashboard has no authentication — it is safe only because
+// StartOS, Umbrel's app_proxy and the loopback-only Docker binding keep it off
+// the network. If that ever changes, these need real auth, not just a throttle.
+const rateBuckets = Object.create(null);
+function rateLimited(key, maxPerMinute) {
+  const now = Date.now();
+  const b = rateBuckets[key] || (rateBuckets[key] = []);
+  while (b.length && now - b[0] > 60000) b.shift();
+  if (b.length >= maxPerMinute) return true;
+  b.push(now);
+  return false;
+}
+
 function platformCapability(platform) {
   switch (platform) {
     case 'startos-0.4': return 'guided';
@@ -263,6 +287,7 @@ async function handleApi(req, res) {
 
     let detected = null;
     let detectError = null;
+    let detecting = false;
     try {
       const r = await bitcoinP2p.detectLocalNode({ override });
       if (r.ok) {
@@ -275,7 +300,12 @@ async function handleApi(req, res) {
         // host running Docker that is almost always the host firewall, which
         // only has a rule for the stratum port. "No node found" would send the
         // user looking in entirely the wrong place.
-        detectError = /timed out/.test(r.error || '')
+        // Still sweeping — a transient state, not a failure. Reported separately
+        // so the UI can say "checking…" instead of showing an error.
+        if (r.pending) {
+          detectError = null;
+          detecting = true;
+        } else detectError = /timed out/.test(r.error || '')
           ? `${r.error} — if your node is running, the host firewall is probably ` +
             `blocking the Docker bridge. It needs a rule for the Bitcoin P2P port, ` +
             `the same way the stratum port has one.`
@@ -309,13 +339,16 @@ async function handleApi(req, res) {
       capability: platformCapability(platform),
       detected,
       detect_error: detectError,
+      detecting,
       enabled: !!s.btc_p2p_enabled,
       remote_port: s.btc_p2p_remote_port || 8333,
       tunnel_status: s.btc_p2p_tunnel_status || 'disconnected',
       last_error: s.btc_p2p_last_error || null,
       vps_host: s.btc_p2p_vps_host || null,
       vps_source: s.btc_p2p_vps_source || null,
-      public_endpoint: (s.btc_p2p_vps_host && s.btc_p2p_enabled)
+      // Re-validated at render: this string is copied into the user's node
+      // configuration, and a stored value could predate a validation change.
+      public_endpoint: (s.btc_p2p_vps_host && s.btc_p2p_enabled && isValidHost(s.btc_p2p_vps_host))
         ? `${s.btc_p2p_vps_host}:${s.btc_p2p_remote_port || 8333}` : null,
       acked: !!s.btc_p2p_acked,
       // True once the user has acked a config line for a host that is no longer
@@ -459,6 +492,7 @@ async function handleApi(req, res) {
 
   // POST /api/btc/verify — dial our own public endpoint from the internet side
   if (pathname === '/api/btc/verify' && req.method === 'POST') {
+    if (rateLimited('verify', 6)) { sendJson(res, 429, { error: 'Too many checks — wait a moment.' }); return; }
     const r = await btcP2pManager.verify();
     sendJson(res, 200, r);
     return;
@@ -481,6 +515,13 @@ async function handleApi(req, res) {
     const v = startosBlocks.validateWireGuardConfig(body.wg_config);
     if (!v.ok) { sendJson(res, 400, { error: v.error }); return; }
     // Remember the VPS address so the verify step can pre-fill it.
+    // The endpoint host comes out of user-pasted text, so it goes through the
+    // same validator as any other host rather than being trusted because the
+    // surrounding config parsed.
+    if (v.vpsHost && !isValidHost(v.vpsHost)) {
+      sendJson(res, 400, { error: 'The Endpoint address in that configuration is not valid.' });
+      return;
+    }
     if (v.vpsHost) state.update({ btc_p2p_vps_host: v.vpsHost, btc_p2p_vps_source: 'startos' });
     sendJson(res, 200, { script: startosBlocks.buildBlockB(v.config, v.vpsHost), vps_host: v.vpsHost });
     return;
@@ -488,6 +529,7 @@ async function handleApi(req, res) {
 
   // POST /api/btc/startos/verify — { line } from the block's output
   if (pathname === '/api/btc/startos/verify' && req.method === 'POST') {
+    if (rateLimited('verify', 6)) { sendJson(res, 429, { error: 'Too many checks — wait a moment.' }); return; }
     const body = await parseBody(req);
     const p = startosBlocks.parseVerifyLine(body.line);
     if (!p.ok) { sendJson(res, 400, { error: p.error }); return; }
@@ -590,6 +632,7 @@ async function handleApi(req, res) {
 
   // POST /api/btc/vps/test-connection
   if (pathname === '/api/btc/vps/test-connection' && req.method === 'POST') {
+    if (rateLimited('btc-test', 6)) { sendJson(res, 429, { error: 'Too many attempts — wait a moment.' }); return; }
     const s = state.get();
     if (!s.btc_p2p_vps_host) {
       sendJson(res, 400, { error: 'No VPS configured yet' });

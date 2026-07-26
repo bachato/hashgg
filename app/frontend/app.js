@@ -952,13 +952,13 @@ function renderBtc(d) {
 
   // Nothing to show unless we found a node (or the platform needs to explain
   // itself). Keeps the dashboard unchanged for everyone else.
-  const show = !!d.detected || d.capability !== 'full';
+  const show = !!d.detected || d.detecting || d.capability !== 'full';
   els.btcSection.style.display = show ? 'block' : 'none';
   if (!show) return;
 
   // Cheap redraw guard: the 3s poll must not wipe "Copied!" feedback or swap
   // the DOM out from under a click.
-  const sig = JSON.stringify([d.capability, d.enabled, d.tunnel_status, d.last_error,
+  const sig = JSON.stringify([d.capability, d.enabled, d.detecting, d.tunnel_status, d.last_error,
     d.public_endpoint, d.acked, d.verified_at, d.advertising, d.inbound_peers,
     d.advertised_stale, d.detected && d.detected.user_agent]);
   if (sig === lastBtcSig) return;
@@ -972,7 +972,7 @@ function renderBtc(d) {
     els.btcChecklist.style.display = 'none';
     els.btcSummaryNote.textContent = d.detected
       ? `· ${shortAgent(d.detected.user_agent)} found, not reachable from the internet`
-      : '';
+      : (d.detecting ? '· checking…' : '');
     return;
   }
 

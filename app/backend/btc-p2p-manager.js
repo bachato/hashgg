@@ -35,8 +35,9 @@ const KNOWN_HOSTS_FILE = '/root/data/btc_p2p_known_hosts';
 class BtcP2pManager {
   constructor() {
     // Where the node lives. Resolved by detection when the tunnel is enabled and
-    // refreshed on reconfigure, because getConfig() must stay synchronous.
+    // re-checked periodically, because getConfig() must stay synchronous.
     this.target = null;
+    this.monitor = null;
 
     this.tunnel = new SshTunnel({
       name: 'btc-p2p',
@@ -88,9 +89,39 @@ class BtcP2pManager {
     await this.resolveTarget();          // throws if we can't find the node
     state.update({ btc_p2p_enabled: true });
     this.tunnel.start();
+    this.startMonitor();
+  }
+
+  // The node can move under us — Umbrel re-assigning a container address, a
+  // user changing their node's port. The forward is baked into the ssh command
+  // at spawn time, so without this the tunnel would keep pointing at an address
+  // nothing answers on, looking connected the whole time.
+  startMonitor() {
+    if (this.monitor) return;
+    this.monitor = setInterval(() => {
+      this.checkTarget().catch(() => {});
+    }, 60000);
+    if (this.monitor.unref) this.monitor.unref();
+  }
+
+  stopMonitor() {
+    if (this.monitor) { clearInterval(this.monitor); this.monitor = null; }
+  }
+
+  async checkTarget() {
+    if (!state.get().btc_p2p_enabled) return;
+    const before = this.target;
+    let now;
+    try { now = await this.resolveTarget(); }
+    catch (_) { return; }   // node briefly unreachable: keep the forward as-is
+    if (before && (before.host !== now.host || before.port !== now.port)) {
+      console.log(`[btc-p2p] Node moved ${before.host}:${before.port} -> ${now.host}:${now.port} — rebuilding the tunnel`);
+      this.tunnel.restart();   // debounced
+    }
   }
 
   disable() {
+    this.stopMonitor();
     // Stop first, then clear the flag: getConfig() returns null once the flag is
     // down, and stop() must still know what it is stopping.
     this.tunnel.stop();
@@ -104,13 +135,14 @@ class BtcP2pManager {
     try {
       await this.resolveTarget();
       this.tunnel.start();
+      this.startMonitor();
     } catch (err) {
       console.error(`[btc-p2p] Cannot resume: ${err.message}`);
       state.update({ btc_p2p_tunnel_status: 'error', btc_p2p_last_error: err.message });
     }
   }
 
-  stop() { this.tunnel.stop(); }
+  stop() { this.stopMonitor(); this.tunnel.stop(); }
 
   /**
    * Dial our own public endpoint from here — out to the internet and back
