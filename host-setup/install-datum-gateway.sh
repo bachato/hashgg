@@ -18,7 +18,8 @@
 #   build             Fetch source, build/rebuild (no root needed).
 #   configure         Create / update datum_gateway.json via prompts.
 #   run               Launch Datum in the foreground using the user's config.
-#   open-firewall     One-time ufw rule so HashGG-in-Docker can reach Datum.
+#   open-firewall     One-time ufw rules so HashGG-in-Docker can reach Datum's
+#                     stratum port and Bitcoin Knots' P2P port.
 #   install-daemon    Promote to a systemd service (requires sudo).
 #   uninstall-daemon  Remove systemd service + system files (requires sudo).
 #                     User-local files are left alone.
@@ -753,6 +754,13 @@ action_open_firewall() {
   require_not_root
   step "Open firewall for HashGG-in-Docker"
 
+  # Datum's stratum port is not the only thing HashGG-in-Docker needs to reach.
+  # The clearnet-inbound feature also has to reach Bitcoin Knots' P2P port on
+  # this host, and a default-deny firewall DROPS those packets — so it presents
+  # as "no Bitcoin node found" rather than as a firewall problem, which sends
+  # people looking for a node that is running perfectly. Open both.
+  local BITCOIN_P2P_PORT="${BITCOIN_P2P_PORT:-8333}"
+
   if ! command -v ufw >/dev/null 2>&1; then
     info "ufw is not installed — nothing to do."
     info "If you run a different firewall, open the Docker bridge (172.16.0.0/12) to your stratum port manually."
@@ -781,7 +789,17 @@ action_open_firewall() {
   # (sudo auth failure, invalid rule, etc.) and set -e will surface it.
   sudo ufw allow from 172.16.0.0/12 to any port "$port" proto tcp \
     comment "HashGG Docker -> Datum stratum"
-  ok "ufw rule in place."
+  ok "Stratum rule in place."
+
+  # And Bitcoin Knots' P2P port, for the clearnet-inbound feature. Without this
+  # the container cannot see the node at all — and because a default-deny
+  # firewall DROPS the packets rather than refusing them, it looks like "no
+  # Bitcoin node found" rather than like a firewall problem, sending people to
+  # hunt for a node that is running perfectly.
+  info "Allowing 172.16.0.0/12 -> ${BITCOIN_P2P_PORT}/tcp (Docker bridge -> Bitcoin P2P)"
+  sudo ufw allow from 172.16.0.0/12 to any port "$BITCOIN_P2P_PORT" proto tcp \
+    comment "HashGG Docker -> Bitcoin P2P"
+  ok "Bitcoin P2P rule in place."
 }
 
 # ---------------------------------------------------------------------------

@@ -29,7 +29,7 @@ Commands:
 | `build`            | Clone / update source, build, install binary to `~/.local/bin/datum_gateway`.      | sudo for `apt install` only |
 | `configure`        | Interactive prompts; writes `~/.config/datum_gateway/datum_gateway.json`.          | no |
 | `run`              | Launches Datum in the foreground using the user-local binary + config. Ctrl-C to stop. | no |
-| `open-firewall`    | Adds a ufw rule so HashGG-in-Docker (on `172.16.0.0/12`) can reach Datum's stratum port. One-time per host. | yes (sudo) |
+| `open-firewall`    | Adds ufw rules so HashGG-in-Docker can reach Datum stratum + Bitcoin P2P. One-time per host. | yes (sudo) |
 | `install-daemon`   | Promotes the user-local install to a systemd service + `datum` system user. Calls `open-firewall` as part of setup. | yes (sudo) |
 | `uninstall-daemon` | Removes the systemd service and system files. Leaves user-local files alone.       | yes (sudo) |
 | `uninstall`        | Removes everything (user + system).                                                | yes (sudo) |
