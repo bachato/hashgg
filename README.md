@@ -104,7 +104,19 @@ That's the whole thing. The script walks the entire chain and asks before anythi
 3. installs, configures and starts Datum Gateway if it isn't already
 4. starts HashGG, then confirms it can actually reach Datum before telling you it worked
 
-It's safe to re-run: each step detects what's already done and skips it. When it finishes, open the dashboard it prints (`http://localhost:3000` by default), pick **playit.gg** or **VPS**, and point your miners at the public endpoint the UI gives you.
+It's safe to re-run: each step detects what's already done and skips it.
+
+When it finishes it prints the three addresses you need:
+
+| | | |
+| --- | --- | --- |
+| **Datum Gateway** | `http://127.0.0.1:7152` | payout address, coinbase tags, pool or solo |
+| **HashGG** | `http://localhost:3000` | tunnel setup and your public mining endpoint |
+| **Stratum (local)** | `127.0.0.1:23335` | for miners on this machine or your LAN |
+
+Start with **Datum Gateway** — set your payout address and coinbase tag there first — then use **HashGG** to pick a tunnel (**playit.gg** or **VPS**) and point your miners at the public endpoint it gives you.
+
+> **Saving settings in Datum's dashboard.** Datum refuses to save from its web UI unless its config has *both* an admin password and `modify_conf` enabled — miss either and the form is read-only with no obvious explanation. The script checks for this and offers to turn it on, generating a password and showing it once (it lives in `~/.config/datum_gateway/datum_gateway.json` as `api.admin_password`). The username is `admin`. Datum's dashboard binds to `127.0.0.1` only, so it's reachable from that machine and nowhere else.
 
 **It never edits `bitcoin.conf`.** That file belongs to your node, so when a setting is missing the script prints the exact lines and waits while you paste them in and restart Knots.
 

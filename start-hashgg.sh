@@ -71,6 +71,8 @@ DATUM_IMAGE="${DATUM_IMAGE:-hashgg-local/datum_gateway:$DATUM_REF}"
 DATUM_STRATUM_PORT_DEFAULT=23335
 DATUM_API_PORT_DEFAULT=7152
 
+DATUM_ADMIN_PASSWORD_NEW=""   # set only when we generate one this run
+
 USER_DATUM_BIN="$HOME/.local/bin/datum_gateway"
 USER_DATUM_CONF="$HOME/.config/datum_gateway/datum_gateway.json"
 
@@ -160,10 +162,20 @@ wait_for_port() {
 
 json_get() {
   # json_get <file> <jq-path> — empty string when jq is absent or key missing.
+  # NOT for booleans: jq's `//` treats `false` the same as null, so a genuine
+  # `false` comes back as "". Use json_raw for those.
   local file="$1" path="$2"
   have jq || return 0
   [ -r "$file" ] || return 0
   jq -r "$path // \"\"" "$file" 2>/dev/null || true
+}
+
+json_raw() {
+  # json_raw <file> <jq-path> — the literal value: "true", "false", "null", ...
+  local file="$1" path="$2"
+  have jq || { printf 'null'; return 0; }
+  [ -r "$file" ] || { printf 'null'; return 0; }
+  jq -r "$path" "$file" 2>/dev/null || printf 'null'
 }
 
 # Fixed project name so the stack is identified the same way regardless of
@@ -457,6 +469,60 @@ datum_api_port() {
   [ -n "$p" ] && printf '%s' "$p" || printf '%s' "$DATUM_API_PORT_DEFAULT"
 }
 
+# Datum's own dashboard is where the payout address, coinbase tags and
+# pool/solo choice actually live. Its settings form is read-only unless BOTH an
+# admin_password is set AND modify_conf is true — miss either and Save is
+# refused with "Config file disallows editing" (src/datum_api.c). Since this
+# config file is one we generate, offering to fix it is fair game; bitcoin.conf
+# is the file we never touch.
+DATUM_CONF_CHANGED=0
+
+ensure_datum_admin() {
+  local pass mod
+  pass="$(json_get "$USER_DATUM_CONF" '.api.admin_password')"
+  mod="$(json_raw "$USER_DATUM_CONF" '.api.modify_conf')"
+
+  if [ -n "$pass" ] && [ "$mod" = "true" ]; then
+    ok "Datum dashboard: settings are editable (sign in as 'admin')"
+    return 0
+  fi
+
+  say ""
+  warn "Datum's dashboard won't let you save settings yet."
+  say ""
+  say "Its settings page — payout address, coinbase tags, pool vs solo — needs"
+  say "two things in Datum's config before the Save button works:"
+  [ -n "$pass" ] && say "  - an admin password ....... already set" \
+                 || say "  - an admin password ....... MISSING"
+  [ "$mod" = "true" ] && say "  - config editing enabled .. already on" \
+                      || say "  - config editing enabled .. OFF"
+  say ""
+  say "Datum's dashboard listens on 127.0.0.1 only, so this is reachable from"
+  say "this machine and nowhere else. Enabling it means anyone who can use this"
+  say "computer and knows the password can change Datum's settings."
+  say ""
+  if ! confirm "Enable editing Datum's settings from its dashboard?" default-yes; then
+    info "Left as-is. You can still view the dashboard; the settings form stays read-only."
+    info "To change settings, edit $USER_DATUM_CONF by hand and restart."
+    return 0
+  fi
+
+  local newpass="$pass"
+  if [ -z "$newpass" ]; then
+    newpass="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c 20 || true)"
+    [ -n "$newpass" ] || newpass="hashgg-$$-$(date +%s)"
+    DATUM_ADMIN_PASSWORD_NEW="$newpass"
+  fi
+
+  local tmp="$USER_DATUM_CONF.tmp.$$"
+  jq --arg p "$newpass" '.api.admin_password = $p | .api.modify_conf = true' \
+     "$USER_DATUM_CONF" >"$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$USER_DATUM_CONF"
+  DATUM_CONF_CHANGED=1
+  ok "Datum config updated — settings are now editable from its dashboard"
+}
+
 datum_native_running() {
   [ -r "$DATUM_PID_FILE" ] || return 1
   local pid; pid="$(cat "$DATUM_PID_FILE" 2>/dev/null || true)"
@@ -466,6 +532,18 @@ datum_native_running() {
   # an unrelated process would otherwise make us report it as running — and,
   # worse, make `down` kill something that isn't ours.
   ps -p "$pid" -o args= 2>/dev/null | grep -q datum_gateway
+}
+
+stop_datum_native() {
+  datum_native_running || return 0
+  local pid; pid="$(cat "$DATUM_PID_FILE")"
+  info "Stopping Datum Gateway (pid $pid)..."
+  kill "$pid" 2>/dev/null || true
+  local i=0
+  while [ "$i" -lt 10 ] && kill -0 "$pid" 2>/dev/null; do sleep 1; i=$((i + 1)); done
+  kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+  rm -f "$DATUM_PID_FILE"
+  ok "Datum Gateway stopped"
 }
 
 start_datum_native() {
@@ -748,10 +826,15 @@ cmd_up() {
   if [ "$DATUM_MODE" = "native" ]; then
     ensure_datum_installed_native
     ensure_datum_configured
+    ensure_datum_admin
+    # A config change only takes effect on start, so bounce an already-running
+    # Datum rather than silently leaving the old settings live.
+    if [ "$DATUM_CONF_CHANGED" = "1" ]; then stop_datum_native; fi
     start_datum_native
   else
     ensure_datum_installed_docker
     ensure_datum_configured
+    ensure_datum_admin
     check_macos_rpc_reachability
     write_container_datum_conf
   fi
@@ -760,15 +843,35 @@ cmd_up() {
   start_hashgg
   verify_hashgg_to_datum
 
-  local sport; sport="$(datum_stratum_port)"
+  local sport aport
+  sport="$(datum_stratum_port)"
+  aport="$(datum_api_port)"
+
   say ""
   step "Done"
   say ""
-  ok  "HashGG dashboard:  http://localhost:$HASHGG_UI_PORT"
-  say "    Datum stratum:     127.0.0.1:$sport"
+  say "  Datum Gateway     http://127.0.0.1:$aport"
+  say "                    payout address, coinbase tags, pool or solo"
   say ""
-  say "Next: open the dashboard and pick a tunnel (playit.gg or a VPS), then"
-  say "point your miners at the public endpoint it shows you."
+  say "  HashGG            http://localhost:$HASHGG_UI_PORT"
+  say "                    tunnel setup and your public mining endpoint"
+  say ""
+  say "  Stratum (local)   127.0.0.1:$sport"
+  say "                    for miners on this machine or your LAN"
+  say ""
+
+  if [ -n "$DATUM_ADMIN_PASSWORD_NEW" ]; then
+    say "  Datum sign-in     admin / $DATUM_ADMIN_PASSWORD_NEW"
+    say "                    generated just now; stored in $USER_DATUM_CONF"
+    say ""
+  elif [ -n "$(json_get "$USER_DATUM_CONF" '.api.admin_password')" ]; then
+    say "  Datum sign-in     username 'admin'; password is api.admin_password in"
+    say "                    $USER_DATUM_CONF"
+    say ""
+  fi
+
+  say "Start with Datum Gateway — set your payout address and coinbase tag there"
+  say "first. Then use HashGG to pick a tunnel and get your public endpoint."
   say ""
   say "  ./start-hashgg.sh status    what's running"
   say "  ./start-hashgg.sh logs      follow HashGG's logs ('logs datum' for Datum)"
@@ -788,14 +891,7 @@ cmd_down() {
   fi
 
   if [ "$DATUM_MODE" = "native" ] && datum_native_running; then
-    local pid; pid="$(cat "$DATUM_PID_FILE")"
-    info "Stopping Datum Gateway (pid $pid)..."
-    kill "$pid" 2>/dev/null || true
-    local i=0
-    while [ "$i" -lt 10 ] && kill -0 "$pid" 2>/dev/null; do sleep 1; i=$((i + 1)); done
-    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
-    rm -f "$DATUM_PID_FILE"
-    ok "Datum Gateway stopped"
+    stop_datum_native
   fi
   say ""
   ok "Stopped. Your Bitcoin node was not touched."
@@ -836,6 +932,10 @@ cmd_status() {
     warn "HashGG: not running"
   fi
 
+  say ""
+  say "  Datum Gateway   http://127.0.0.1:$(datum_api_port)"
+  say "  HashGG          http://localhost:$HASHGG_UI_PORT"
+  say "  Stratum         127.0.0.1:$sport"
   say ""
   say "State dir: $STATE_DIR"
 }
