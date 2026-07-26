@@ -27,6 +27,18 @@ export const main = sdk.setupMain(async ({ effects }) => {
           DATUM_STRATUM_PORT: '23334',
           LISTEN_PORT: '23335',
           DATUM_REMOTE_PORT: '23334',
+          // Declared rather than inferred. Without it HashGG guesses the
+          // platform, and a guess decides whether the Bitcoin reachability
+          // feature offers the guided setup or hides itself.
+          HASHGG_PLATFORM: 'startos-0.4',
+          // Where Bitcoin Knots listens for peers. This is the PLAIN bind port:
+          // 58334 is the whitebind listener, and forwarding that to the internet
+          // would grant every anonymous peer whitelisted permissions on the
+          // user's node. Declaring the right one is the protection; do not
+          // replace this with a scan.
+          BITCOIN_P2P_HOST: 'bitcoind.startos',
+          BITCOIN_P2P_PORT: '58333',
+          BITCOIN_P2P_WHITEBIND_PORT: '58334',
         },
       },
       ready: {
