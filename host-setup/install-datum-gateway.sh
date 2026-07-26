@@ -67,6 +67,8 @@ DEFAULT_STRATUM_PORT=23335
 DEFAULT_STRATUM_ADDR="0.0.0.0"
 DEFAULT_BITCOIN_CONF_CANDIDATES=(
   "$HOME/.bitcoin/bitcoin.conf"
+  # macOS default (bitcoin-qt on a Mac).
+  "$HOME/Library/Application Support/Bitcoin/bitcoin.conf"
   "/home/bitcoin/.bitcoin/bitcoin.conf"
   "/var/lib/bitcoind/bitcoin.conf"
   "/etc/bitcoin/bitcoin.conf"
@@ -184,6 +186,13 @@ parse_conf_value() {
 }
 
 detect_bitcoin_conf() {
+  # An explicit BITCOIN_CONF wins. start-hashgg.sh sets it after a deeper search
+  # (running process, open lock file, bitcoin-qt's remembered data directory) —
+  # the candidate list below only covers the default locations, which a
+  # bitcoin-qt user who chose their own data directory will not be using.
+  if [[ -n "${BITCOIN_CONF:-}" && -r "${BITCOIN_CONF}" ]]; then
+    printf '%s' "$BITCOIN_CONF"; return 0
+  fi
   local candidate
   for candidate in "${DEFAULT_BITCOIN_CONF_CANDIDATES[@]}"; do
     [[ -r "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
@@ -346,7 +355,10 @@ action_check_knots() {
     ok "  disablewallet=1 (wallet-less mining node)"
   else
     warn "  disablewallet= (missing — Datum will have RPC access to any loaded wallet)"
-    warn "                 See internal_docs/docker-image-plan.md §9.1 before proceeding if this Knots has a wallet."
+    warn "                 Datum gets full RPC access to this node, so if it has a"
+    warn "                 loaded wallet with real funds, a compromise of Datum is a"
+    warn "                 compromise of that wallet. Either set disablewallet=1, or"
+    warn "                 confirm no meaningful funds live on this node."
     missing+=("disablewallet=1")
   fi
 
