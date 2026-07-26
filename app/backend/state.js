@@ -30,6 +30,26 @@ const INITIAL_STATE = {
   vps_tunnel_status: 'disconnected',
   vps_last_error: null,
   vps_host_key_verified: false, // true after first successful connect + key stored
+  // --- Bitcoin P2P clearnet inbound (advanced; independent of tunnel_mode) ---
+  // Flat keys, deliberately: load() does a SHALLOW {...freshInitial(), ...stored}
+  // merge, so a nested object read from an older state.json would be taken
+  // wholesale and silently miss any sub-field added later.
+  btc_p2p_enabled: false,
+  btc_p2p_remote_port: 8333,          // public port on the P2P VPS
+  btc_p2p_target_host: null,          // manual override; null = auto-detect
+  btc_p2p_target_port: null,
+  // Its own VPS record — populated even when the user picks "same as my stratum
+  // VPS", so a stratum-side reset or mode switch can never orphan this tunnel.
+  btc_p2p_vps_source: null,           // 'shared' | 'own' (provenance, for UI copy)
+  btc_p2p_vps_host: null,
+  btc_p2p_vps_ssh_port: 22,
+  btc_p2p_vps_ssh_user: 'hashgg',
+  btc_p2p_tunnel_status: 'disconnected',
+  btc_p2p_last_error: null,
+  btc_p2p_advertised_for_host: null,  // host at the time the user acked the config line
+  btc_p2p_acked: false,
+  btc_p2p_verified_at: null,
+  btc_p2p_verified_agent: null,
   // --- Additional miners (advanced) ---
   // Each: { id, name, local_ip, local_port, listen_port (local socat bridge),
   //         tunnel_id (playit), public_endpoint, remote_port (vps), status, last_error }

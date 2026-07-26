@@ -12,6 +12,7 @@ const playitCleanup = require('./playit-cleanup');
 const connections = require('./connections');
 const vpsManager = require('./vps-manager');
 const sshKeygenHelper = require('./ssh-keygen-helper');
+const bitcoinP2p = require('./bitcoin-p2p');
 
 const PORT = 3000;
 const FRONTEND_DIR = '/usr/local/lib/hashgg/frontend';
@@ -51,6 +52,36 @@ function getListenPort() {
   const p = parseInt(process.env.LISTEN_PORT || process.env.DATUM_STRATUM_PORT, 10);
   if (p) return p;
   return getStratumPort();
+}
+
+// Which platform are we on, and what can the clearnet-inbound feature do here?
+//
+//   full        — HashGG runs the tunnel and the user can set externalip
+//                 (Umbrel's Bitcoin app has a free-form config field; plain
+//                 Docker users own bitcoin.conf outright)
+//   guided      — StartOS 0.4.0. externalip is derived from addresses published
+//                 on the Peer interface, which must belong to a registered
+//                 gateway, so an arbitrary tunnel address cannot be advertised.
+//                 StartOS does this natively via StartTunnel; we guide, not tunnel.
+//   unavailable — StartOS 0.3.5.1. bitcoin.conf is regenerated from a template on
+//                 every start and -externalip is hard-wired to the onion address,
+//                 so nothing we build could ever be advertised.
+function detectPlatform() {
+  const explicit = (process.env.HASHGG_PLATFORM || '').trim();
+  if (explicit) return explicit;
+  // Inference fallback for installs that predate the env var.
+  const datumHost = process.env.DATUM_HOST || '';
+  if (datumHost.endsWith('.startos')) return 'startos-0.4';
+  if (datumHost.endsWith('.embassy') || fs.existsSync(CONFIG_FILE)) return 'startos-0.3';
+  return 'docker';
+}
+
+function platformCapability(platform) {
+  switch (platform) {
+    case 'startos-0.4': return 'guided';
+    case 'startos-0.3': return 'unavailable';
+    default: return 'full';   // umbrel, docker
+  }
 }
 
 // Serve static files
@@ -203,6 +234,70 @@ async function handleApi(req, res) {
     try { require('fs').unlinkSync('/root/data/vps_known_hosts'); } catch (_) {}
     state.reset();
     sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // --- Bitcoin P2P clearnet inbound ---
+
+  // GET /api/btc/status — platform capability + what node we can see.
+  // Detection is cached in bitcoin-p2p.js, so this is cheap enough for the
+  // dashboard's 3 s poll.
+  if (pathname === '/api/btc/status' && req.method === 'GET') {
+    const s = state.get();
+    const platform = detectPlatform();
+    const override = s.btc_p2p_target_host
+      ? { host: s.btc_p2p_target_host, port: s.btc_p2p_target_port }
+      : null;
+
+    let detected = null;
+    let detectError = null;
+    try {
+      const r = await bitcoinP2p.detectLocalNode({ override });
+      if (r.ok) {
+        detected = { host: r.host, port: r.port, user_agent: r.user_agent,
+                     protocol_version: r.protocol_version, start_height: r.start_height,
+                     source: r.source };
+      } else {
+        // Distinguish "nothing there" from "something is there but we can't
+        // reach it". A timeout means packets are being dropped — on a Linux
+        // host running Docker that is almost always the host firewall, which
+        // only has a rule for the stratum port. "No node found" would send the
+        // user looking in entirely the wrong place.
+        detectError = /timed out/.test(r.error || '')
+          ? `${r.error} — if your node is running, the host firewall is probably ` +
+            `blocking the Docker bridge. It needs a rule for the Bitcoin P2P port, ` +
+            `the same way the stratum port has one.`
+          : r.error;
+      }
+    } catch (err) {
+      console.error(`[btc] detection error: ${err.message}`);
+      detectError = err.message;
+    }
+
+    sendJson(res, 200, {
+      platform,
+      capability: platformCapability(platform),
+      detected,
+      detect_error: detectError,
+      enabled: !!s.btc_p2p_enabled,
+      remote_port: s.btc_p2p_remote_port || 8333,
+      tunnel_status: s.btc_p2p_tunnel_status || 'disconnected',
+      last_error: s.btc_p2p_last_error || null,
+      vps_host: s.btc_p2p_vps_host || null,
+      vps_source: s.btc_p2p_vps_source || null,
+      public_endpoint: (s.btc_p2p_vps_host && s.btc_p2p_enabled)
+        ? `${s.btc_p2p_vps_host}:${s.btc_p2p_remote_port || 8333}` : null,
+      acked: !!s.btc_p2p_acked,
+      // True once the user has acked a config line for a host that is no longer
+      // the one we'd advertise — i.e. the line in their node is now stale.
+      advertised_stale: !!(s.btc_p2p_acked && s.btc_p2p_advertised_for_host
+        && s.btc_p2p_advertised_for_host !== s.btc_p2p_vps_host),
+      verified_at: s.btc_p2p_verified_at || null,
+      verified_agent: s.btc_p2p_verified_agent || null,
+      // RPC-derived; null means "unknown", never "no". Wired up later.
+      advertising: null,
+      inbound_peers: null,
+    });
     return;
   }
 
