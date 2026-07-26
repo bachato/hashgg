@@ -14,6 +14,7 @@ const vpsManager = require('./vps-manager');
 const sshKeygenHelper = require('./ssh-keygen-helper');
 const bitcoinP2p = require('./bitcoin-p2p');
 const btcP2pManager = require('./btc-p2p-manager');
+const bitcoinRpc = require('./bitcoin-rpc');
 
 const PORT = 3000;
 const FRONTEND_DIR = '/usr/local/lib/hashgg/frontend';
@@ -284,6 +285,24 @@ async function handleApi(req, res) {
       detectError = err.message;
     }
 
+    // The advertisement half — the only thing that tells the user their config
+    // line actually took effect. Umbrel-only, and strictly best-effort: any
+    // failure leaves these null and the feature falls back to the
+    // handshake-only story rather than reporting a problem.
+    let advertising = null;
+    let inboundPeers = null;
+    if (s.btc_p2p_enabled && s.btc_p2p_vps_host && bitcoinRpc.isAvailable()) {
+      try {
+        advertising = await bitcoinRpc.isAdvertising(
+          s.btc_p2p_vps_host, s.btc_p2p_remote_port || 8333);
+      } catch (err) {
+        console.log(`[btc] advertisement check unavailable: ${err.message}`);
+      }
+      try {
+        inboundPeers = await bitcoinRpc.getInboundPeerCount();
+      } catch (_) { /* best-effort */ }
+    }
+
     sendJson(res, 200, {
       platform,
       capability: platformCapability(platform),
@@ -304,9 +323,10 @@ async function handleApi(req, res) {
         && s.btc_p2p_advertised_for_host !== s.btc_p2p_vps_host),
       verified_at: s.btc_p2p_verified_at || null,
       verified_agent: s.btc_p2p_verified_agent || null,
-      // RPC-derived; null means "unknown", never "no". Wired up later.
-      advertising: null,
-      inbound_peers: null,
+      // RPC-derived. null means "unknown" — the UI must never render it as
+      // "no", because on every platform but Umbrel we simply cannot see this.
+      advertising,
+      inbound_peers: inboundPeers,
     });
     return;
   }
