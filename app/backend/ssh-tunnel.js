@@ -69,6 +69,11 @@ class SshTunnel extends EventEmitter {
     this.restartTimer = null;
     this.stableTimer = null;
     this.reconfigureTimer = null;
+    // The delayed start inside restart(). Tracked, not fire-and-forget: an
+    // untracked timer survives stop(), so a shutdown landing in its window
+    // spawns a fresh ssh child as the process exits — orphaning exactly the
+    // child this class stops in order to avoid "stuck in Stopping".
+    this.reconfigureStartTimer = null;
     this.upSince = null;
   }
 
@@ -213,8 +218,10 @@ class SshTunnel extends EventEmitter {
     this._clearRestart();
     this._clearStable();
     // A direct stop (disconnect/reset/shutdown) cancels any pending debounced
-    // reconfigure so we don't silently reconnect afterwards.
+    // reconfigure so we don't silently reconnect afterwards — BOTH halves of it,
+    // the debounce and the delayed start it schedules.
     if (this.reconfigureTimer) { clearTimeout(this.reconfigureTimer); this.reconfigureTimer = null; }
+    if (this.reconfigureStartTimer) { clearTimeout(this.reconfigureStartTimer); this.reconfigureStartTimer = null; }
     if (this.process) {
       this._setStatus('disconnected', null);
       const proc = this.process;
@@ -237,7 +244,12 @@ class SshTunnel extends EventEmitter {
     this.reconfigureTimer = setTimeout(() => {
       this.reconfigureTimer = null;
       this.stop();
-      setTimeout(() => this.start(), RESTART_DELAY_MS);
+      // stop() clears this field, so assign AFTER it — otherwise the timer we
+      // are about to create is the one thing stop() cannot cancel.
+      this.reconfigureStartTimer = setTimeout(() => {
+        this.reconfigureStartTimer = null;
+        this.start();
+      }, RESTART_DELAY_MS);
     }, RECONFIGURE_DEBOUNCE_MS);
   }
 

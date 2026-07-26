@@ -162,6 +162,58 @@
                   remove that line — otherwise your node keeps advertising a dead address.</li>
             </ul>
 
+            <!-- The P2P endpoint needs a VPS. It does not have to be the one
+                 carrying stratum, and a playit user may have none at all — so
+                 this is a self-contained sub-flow rather than the full-screen
+                 onboarding, which belongs to the mining path. -->
+            <div id="btc-vps-setup" style="display:none;">
+              <div class="hint-box">
+                <strong>This needs a VPS.</strong> Your node gets its public address from one.
+                About $5/month is plenty — it needs a dedicated IPv4 and enough transfer
+                allowance, not a fast machine.
+              </div>
+
+              <div id="btc-vps-share" style="display:none;">
+                <div class="actions">
+                  <button id="btn-btc-use-shared" class="btn btn-primary btn-sm">Use my HashGG VPS</button>
+                  <span id="btc-shared-host" class="hint"></span>
+                </div>
+                <p class="hint">…or use a different one:</p>
+              </div>
+
+              <p id="btc-vps-consolidate" class="hint" style="display:none;">
+                You are paying for playit.gg for mining. One VPS can carry both, which
+                would let you drop that subscription and have one machine to look after.
+              </p>
+
+              <div class="advanced-grid">
+                <div class="form-group">
+                  <label class="form-label" for="btc-vps-host">VPS address</label>
+                  <input type="text" id="btc-vps-host" class="form-input" placeholder="e.g. 203.0.113.9" autocomplete="off" spellcheck="false">
+                </div>
+              </div>
+              <div class="actions">
+                <button id="btn-btc-vps-save" class="btn btn-secondary btn-sm">Use this VPS</button>
+                <span id="btc-vps-save-status" class="test-status"></span>
+              </div>
+            </div>
+
+            <!-- Configured: install access, then prove it works. -->
+            <div id="btc-vps-script" style="display:none;">
+              <p class="hint">Run this on <strong><span id="btc-vps-target"></span></strong> as
+              root. It creates a restricted user for HashGG and opens the port.</p>
+              <div style="display:flex;align-items:center;gap:0.5rem;">
+                <div class="code-hint" id="btc-vps-setup-script" style="flex:1;margin:0;max-height:12rem;overflow:auto;white-space:pre;"></div>
+                <button id="btn-btc-copy-setup" class="btn btn-secondary btn-sm">Copy</button>
+                <span id="btc-copy-setup-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+              </div>
+              <div class="actions">
+                <button id="btn-btc-vps-test" class="btn btn-secondary btn-sm">Test connection</button>
+                <span id="btc-vps-test-status" class="test-status"></span>
+                <button id="btn-btc-vps-reset" class="btn btn-danger btn-sm">Use a different VPS</button>
+              </div>
+            </div>
+
             <div class="actions">
               <button id="btn-btc-enable" class="btn btn-primary">Make my node reachable</button>
               <span id="btc-enable-status" class="test-status"></span>

@@ -357,6 +357,9 @@ async function handleApi(req, res) {
       last_error: s.btc_p2p_last_error || null,
       vps_host: s.btc_p2p_vps_host || null,
       vps_source: s.btc_p2p_vps_source || null,
+      // The stratum VPS, offered as a one-click shortcut. Only the address —
+      // enough to label the button, nothing the UI does not need.
+      stratum_vps_host: s.vps_host || null,
       // Re-validated at render: this string is copied into the user's node
       // configuration, and a stored value could predate a validation change.
       public_endpoint: (s.btc_p2p_vps_host && s.btc_p2p_enabled && isValidHost(s.btc_p2p_vps_host))
@@ -695,9 +698,13 @@ async function handleApi(req, res) {
   // GET /api/btc/vps/teardown-script
   if (pathname === '/api/btc/vps/teardown-script' && req.method === 'GET') {
     const s = state.get();
+    // Compare the resolved hosts rather than trusting `source`: someone can
+    // reach the same machine by typing its address under "a different VPS".
+    const shared = !!(s.btc_p2p_vps_host && s.vps_host && s.btc_p2p_vps_host === s.vps_host);
     sendJson(res, 200, {
-      script: buildTeardownScript([s.btc_p2p_remote_port || 8333], s.btc_p2p_vps_host),
+      script: buildTeardownScript([s.btc_p2p_remote_port || 8333], s.btc_p2p_vps_host, shared),
       host: s.btc_p2p_vps_host || null,
+      shared_with_stratum: shared,
     });
     return;
   }
@@ -1356,8 +1363,42 @@ echo "Return to HashGG and click Test Connection."
 // the firewall rules for every port HashGG opened (primary + additional miners).
 // Best-effort and idempotent (safe to re-run; safe if some pieces are already
 // gone). Mirror of buildSetupScript.
-function buildTeardownScript(ports, targetHost) {
+// `portsOnly` generates a teardown that closes the listed ports and NOTHING
+// else. It exists for one case: the Bitcoin P2P endpoint sharing a VPS with the
+// mining tunnel. The full teardown deletes the `hashgg` user and the sshd
+// drop-in, which on a shared machine takes the mining tunnel down with it — and
+// the wrong-host guard cannot catch that, because it IS the right host.
+function buildTeardownScript(ports, targetHost, portsOnly = false) {
   const portList = (Array.isArray(ports) ? ports : [ports]).filter(Boolean).join(' ');
+  if (portsOnly) {
+    return `#!/bin/bash
+# Best-effort cleanup — keep going even if individual steps fail.
+set -uo pipefail
+
+STRATUM_PORTS="${portList}"
+
+echo "=== HashGG — closing the Bitcoin port on ${targetHost || 'this VPS'} ==="
+echo ""
+echo "This VPS also carries your mining tunnel, so this script closes the"
+echo "Bitcoin port and nothing else. Your mining access is left untouched."
+echo ""
+
+for PORT in $STRATUM_PORTS; do
+  echo "Closing port $PORT/tcp in firewall..."
+  if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+    ufw delete allow "$PORT/tcp" 2>/dev/null || true
+  elif command -v firewall-cmd &>/dev/null; then
+    firewall-cmd --permanent --remove-port="$PORT/tcp" --quiet 2>/dev/null || true
+  else
+    echo "(No managed firewall detected — if you opened port $PORT in your VPS provider firewall, remove it there.)"
+  fi
+done
+command -v firewall-cmd &>/dev/null && firewall-cmd --reload --quiet 2>/dev/null || true
+
+echo ""
+echo "=== Done. Port(s) closed; mining access left in place. ==="
+`;
+  }
   return `#!/bin/bash
 # Best-effort cleanup — keep going even if individual steps fail.
 set -uo pipefail

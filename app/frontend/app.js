@@ -44,6 +44,22 @@ const els = {
   btcIntro: document.getElementById('btc-intro'),
   btcChecklist: document.getElementById('btc-checklist'),
   btcGuidance: document.getElementById('btc-guidance'),
+  btcVpsSetup: document.getElementById('btc-vps-setup'),
+  btcVpsShare: document.getElementById('btc-vps-share'),
+  btnBtcUseShared: document.getElementById('btn-btc-use-shared'),
+  btcSharedHost: document.getElementById('btc-shared-host'),
+  btcVpsConsolidate: document.getElementById('btc-vps-consolidate'),
+  btcVpsHost: document.getElementById('btc-vps-host'),
+  btnBtcVpsSave: document.getElementById('btn-btc-vps-save'),
+  btcVpsSaveStatus: document.getElementById('btc-vps-save-status'),
+  btcVpsScript: document.getElementById('btc-vps-script'),
+  btcVpsTarget: document.getElementById('btc-vps-target'),
+  btcVpsSetupScript: document.getElementById('btc-vps-setup-script'),
+  btnBtcCopySetup: document.getElementById('btn-btc-copy-setup'),
+  btcCopySetupFeedback: document.getElementById('btc-copy-setup-feedback'),
+  btnBtcVpsTest: document.getElementById('btn-btc-vps-test'),
+  btcVpsTestStatus: document.getElementById('btc-vps-test-status'),
+  btnBtcVpsReset: document.getElementById('btn-btc-vps-reset'),
   btnBtcEnable: document.getElementById('btn-btc-enable'),
   btcEnableStatus: document.getElementById('btc-enable-status'),
   btcDotTunnel: document.getElementById('btc-dot-tunnel'),
@@ -960,7 +976,8 @@ function renderBtc(d) {
   // the DOM out from under a click.
   const sig = JSON.stringify([d.capability, d.enabled, d.detecting, d.tunnel_status, d.last_error,
     d.public_endpoint, d.acked, d.verified_at, d.advertising, d.inbound_peers,
-    d.advertised_stale, d.verified_endpoint, d.detected && d.detected.user_agent]);
+    d.advertised_stale, d.verified_endpoint, d.vps_host, d.stratum_vps_host,
+    d.detected && d.detected.user_agent]);
   if (sig === lastBtcSig) return;
   lastBtcSig = sig;
 
@@ -973,6 +990,7 @@ function renderBtc(d) {
     els.btcSummaryNote.textContent = d.detected
       ? `· ${shortAgent(d.detected.user_agent)} found, not reachable from the internet`
       : (d.detecting ? '· checking…' : '');
+    renderBtcVpsSetup(d);
     return;
   }
 
@@ -1187,6 +1205,99 @@ els.btnBtcCopyFirewall.addEventListener('click', () =>
   copyText(els.btcFirewallCmd.textContent, els.btcCopyFwFeedback, els.btnBtcCopyFirewall));
 els.btnBtcCopyLine.addEventListener('click', () =>
   copyText(els.btcExternalipLine.textContent, els.btcCopyLineFeedback, els.btnBtcCopyLine));
+
+// --- The P2P endpoint's own VPS -------------------------------------------
+//
+// Deliberately inline rather than the full-screen VPS onboarding: that flow
+// belongs to mining, and threading a scope through it would put the mining path
+// one bad branch away from breaking. This is an advanced sub-flow and should not
+// hijack the whole app anyway.
+
+function renderBtcVpsSetup(d) {
+  const configured = !!d.vps_host;
+  els.btcVpsSetup.style.display = configured ? 'none' : 'block';
+  els.btcVpsScript.style.display = configured ? 'block' : 'none';
+  // Nothing to enable until there is a VPS to enable it on.
+  els.btnBtcEnable.disabled = !configured;
+
+  if (configured) {
+    els.btcVpsTarget.textContent = d.vps_host;
+    loadBtcSetupScript();
+    return;
+  }
+
+  const canShare = !!d.stratum_vps_host;
+  els.btcVpsShare.style.display = canShare ? 'block' : 'none';
+  if (canShare) els.btcSharedHost.textContent = d.stratum_vps_host;
+  // Worth saying once, not nagging: someone renting a VPS for this while paying
+  // for playit can usually consolidate onto one machine.
+  els.btcVpsConsolidate.style.display = (!canShare && currentMode === 'playit') ? 'block' : 'none';
+}
+
+let btcSetupScriptFor = null;
+async function loadBtcSetupScript() {
+  const host = btcState && btcState.vps_host;
+  if (!host || btcSetupScriptFor === host) return;
+  try {
+    const r = await api('GET', '/btc/vps/setup-script');
+    els.btcVpsSetupScript.textContent = r.script;
+    btcSetupScriptFor = host;
+  } catch (err) {
+    els.btcVpsSetupScript.textContent = `Could not generate the script: ${err.message}`;
+  }
+}
+
+async function btcVpsConfigure(body, statusEl) {
+  setBtcStatus(statusEl, 'Saving…', '');
+  try {
+    await api('POST', '/btc/vps/configure', body);
+    btcSetupScriptFor = null;
+    lastBtcSig = null;
+    await refreshBtcStatus();
+    setBtcStatus(statusEl, '', '');
+  } catch (err) {
+    setBtcStatus(statusEl, err.message, 'err');
+  }
+}
+
+async function btcVpsTest() {
+  setBtcStatus(els.btcVpsTestStatus, 'Connecting…', '');
+  try {
+    const r = await api('POST', '/btc/vps/test-connection', {});
+    setBtcStatus(els.btcVpsTestStatus,
+      r.success ? 'Connected — your VPS is ready' : (r.error || 'Could not connect'),
+      r.success ? 'ok' : 'err');
+  } catch (err) {
+    setBtcStatus(els.btcVpsTestStatus, err.message, 'err');
+  }
+}
+
+async function btcVpsReset() {
+  try {
+    const r = await api('POST', '/btc/vps/reset', {});
+    if (r.cleanup && r.cleanup.externalip_line) {
+      els.btcCleanupNote.style.display = 'block';
+      els.btcCleanupNote.innerHTML = `<strong>One thing left to tidy up.</strong><br>Remove
+        <code>${r.cleanup.externalip_line}</code> from your Bitcoin app's configuration —
+        it points at a VPS you are no longer using.`;
+    }
+    btcSetupScriptFor = null;
+    lastBtcSig = null;
+    await refreshBtcStatus();
+  } catch (err) { showError(err.message); }
+}
+
+els.btnBtcUseShared.addEventListener('click', () =>
+  btcVpsConfigure({ source: 'shared' }, els.btcVpsSaveStatus));
+els.btnBtcVpsSave.addEventListener('click', () => {
+  const h = els.btcVpsHost.value.trim();
+  if (!h) { setBtcStatus(els.btcVpsSaveStatus, 'Enter your VPS address', 'err'); return; }
+  btcVpsConfigure({ source: 'own', host: h }, els.btcVpsSaveStatus);
+});
+els.btnBtcVpsTest.addEventListener('click', btcVpsTest);
+els.btnBtcVpsReset.addEventListener('click', btcVpsReset);
+els.btnBtcCopySetup.addEventListener('click', () =>
+  copyText(els.btcVpsSetupScript.textContent, els.btcCopySetupFeedback, els.btnBtcCopySetup));
 
 // --- StartOS 0.4.0: the generated setup blocks ------------------------------
 
