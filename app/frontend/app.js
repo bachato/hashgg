@@ -1018,9 +1018,14 @@ function renderBtc(d) {
   els.btcChecklist.style.display = 'block';
 
   // Summary line — what the user sees without expanding.
-  if (d.verified_at) {
+  // Past verification is not present reachability. The collapsed line is all
+  // most people ever read, so it must not claim "reachable" while the tunnel is
+  // down — that is the one place a stale ✓ would be believed without question.
+  if (d.verified_at && d.tunnel_status === 'connected') {
     const peers = (typeof d.inbound_peers === 'number') ? ` · ${d.inbound_peers} inbound` : '';
     els.btcSummaryNote.textContent = `· reachable at ${d.public_endpoint}${peers}`;
+  } else if (d.verified_at) {
+    els.btcSummaryNote.textContent = `· tunnel ${d.tunnel_status} — not reachable right now`;
   } else {
     els.btcSummaryNote.textContent = `· ${d.tunnel_status}`;
   }
@@ -1096,8 +1101,11 @@ function renderBtcGuidance(d) {
   els.btcGuidance.style.display = 'block';
   // On this path HashGG owns no tunnel, so a completed setup would otherwise
   // leave no trace after a reload — on the longest flow of the three.
+  // Past tense deliberately. StartOS owns the tunnel here, so we have no live
+  // signal — the address could have stopped working and we would not know.
+  // "verified" is what we can actually stand behind; "reachable" would not be.
   els.btcSummaryNote.textContent = d.verified_endpoint
-    ? `· reachable at ${d.verified_endpoint}`
+    ? `· verified at ${d.verified_endpoint}`
     : (d.detected ? `· ${shortAgent(d.detected.user_agent)} found` : '');
 
   els.btcStartos.style.display = (d.capability === 'guided') ? 'block' : 'none';

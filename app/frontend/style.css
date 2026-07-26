@@ -79,6 +79,18 @@ a:hover {
 }
 
 /* Buttons */
+/* Nothing in the stylesheet reflected the disabled attribute, so a disabled
+   button rendered identically to an active one — a primary button that looks
+   like the main call to action and does nothing when clicked. */
+.btn:disabled,
+.btn:disabled:hover {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
 .btn {
   padding: 0.5rem 1.25rem;
   border-radius: 6px;
@@ -456,6 +468,16 @@ details summary:hover {
   white-space: pre;
   color: var(--text);
   margin: 0;
+  /* These hold whole setup scripts — a couple of hundred lines. Unbounded, the
+     block pushes its own Copy button and everything after it off the screen, so
+     the user never sees the action the script is for. Scroll it instead; the
+     Copy button takes the whole thing regardless of what is in view. */
+  max-height: 18rem;
+  overflow: auto;
+  padding: 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 
 .code-hint {

@@ -199,7 +199,12 @@ class BtcP2pManager {
     } catch (_) {}
 
     const r = await bitcoinP2p.verifyPublic(s.btc_p2p_vps_host, port, expect);
-    if (r.ok) {
+    // A warning means SOMETHING answered, but not the node we found locally —
+    // a stale forward, or another service holding the port on a shared VPS.
+    // That is precisely what the comparison exists to catch, so it must not be
+    // recorded as verified: the summary line would then claim the user's node is
+    // reachable on the strength of a stranger's handshake.
+    if (r.ok && !r.warning) {
       state.update({
         btc_p2p_verified_at: new Date().toISOString(),
         btc_p2p_verified_agent: r.user_agent || null,

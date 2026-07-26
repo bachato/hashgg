@@ -596,8 +596,17 @@ async function handleApi(req, res) {
     const body = await parseBody(req);
     const p = startosBlocks.parseVerifyLine(body.line);
     if (!p.ok) { sendJson(res, 400, { error: p.error }); return; }
-    const r = await bitcoinP2p.verifyPublic(p.host, p.port, null);
-    if (r.ok) {
+    // Compare against the node we can see locally, the same as the Umbrel path.
+    // Detection works on 0.4.0 (bitcoind.startos), and the risk is identical:
+    // the pasted line could name an address something else is answering on.
+    let expect = null;
+    try {
+      const local = await bitcoinP2p.detectLocalNode({});
+      if (local.ok) expect = local;
+    } catch (_) { /* best-effort — never block verification on it */ }
+
+    const r = await bitcoinP2p.verifyPublic(p.host, p.port, expect);
+    if (r.ok && !r.warning) {
       state.update({
         btc_p2p_vps_host: p.host,
         btc_p2p_remote_port: p.port,
