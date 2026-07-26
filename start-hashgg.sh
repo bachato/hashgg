@@ -128,7 +128,25 @@ port_open() {
   fi
 }
 
+# Poll an HTTP endpoint until it actually answers.
+#
+# Use this, not wait_for_port, for anything published by Docker: `docker-proxy`
+# binds the host port the moment the container is created, so a TCP connect
+# succeeds long before the process inside is serving. Waiting on the port alone
+# reports "up" too early and the first request then fails.
+wait_for_http() {
+  local url="$1" limit="$2" label="$3" i=0
+  while [ "$i" -lt "$limit" ]; do
+    if curl -fsS --max-time 3 "$url" >/dev/null 2>&1; then return 0; fi
+    sleep 1
+    i=$((i + 1))
+  done
+  warn "$label did not respond at $url within ${limit}s."
+  return 1
+}
+
 # Poll a port until it answers. wait_for_port <host> <port> <seconds> <label>
+# Fine for a native process; see wait_for_http for containers.
 wait_for_port() {
   local host="$1" port="$2" limit="$3" label="$4" i=0
   while [ "$i" -lt "$limit" ]; do
@@ -641,7 +659,8 @@ start_hashgg() {
   info "Image: $HASHGG_IMAGE"
   check_container_collision
   compose up -d
-  if wait_for_port 127.0.0.1 "$HASHGG_UI_PORT" 60 "HashGG"; then
+  # /api/status is cheap and only answers once the backend is actually serving.
+  if wait_for_http "http://127.0.0.1:$HASHGG_UI_PORT/api/status" 60 "HashGG"; then
     ok "HashGG is up"
   else
     err "Recent logs:"
@@ -656,8 +675,13 @@ start_hashgg() {
 verify_hashgg_to_datum() {
   step "Checking HashGG can reach Datum Gateway"
 
+  # One retry: /api/diag opens sockets to Datum and can be slow on first call.
   local out
   out="$(curl -fsS --max-time 40 "http://127.0.0.1:$HASHGG_UI_PORT/api/diag" 2>/dev/null || true)"
+  if [ -z "$out" ]; then
+    sleep 3
+    out="$(curl -fsS --max-time 40 "http://127.0.0.1:$HASHGG_UI_PORT/api/diag" 2>/dev/null || true)"
+  fi
   if [ -z "$out" ]; then
     warn "Couldn't read HashGG's diagnostics. Check the dashboard once it loads."
     return 0
