@@ -1122,9 +1122,14 @@ function renderBtcGuidance(d) {
         this page</strong> — no VPS, nothing to buy, nothing to paste.</p>
         <p>To find out, open your <strong>Bitcoin Knots</strong> service, go to
         <strong>Interfaces → Peer</strong>, and see whether a <strong>public IP address</strong>
-        is listed. If one is, switch it on. That is the entire job.</p>
-        <p>If none is listed, your internet provider does not give you an address that can
-        receive connections, and the steps below are the way around that.</p>
+        is listed. If one is, switch it on — StartOS will ask your router to open the port for
+        you, and often that is all it takes.</p>
+        <p>If your router refuses, the only way on from there is to set up
+        <strong>port forwarding</strong> in the router's own settings by hand. That is different
+        on every router, it is the part most people would rather not touch, and the steps below
+        avoid it completely.</p>
+        <p>If no public address is listed at all, your internet provider does not give you one
+        that can receive connections — the steps below are the way around that too.</p>
         <p class="hint">Worth knowing either way: using your own connection shows your home IP
         address to the nodes that connect to you. The VPS steps below hide it. Neither is wrong
         — pick whichever you prefer.</p>
