@@ -767,7 +767,10 @@ verify_hashgg_to_datum() {
     out="$(curl -fsS --max-time 40 "http://127.0.0.1:$HASHGG_UI_PORT/api/diag" 2>/dev/null || true)"
   fi
   if [ -z "$out" ]; then
-    warn "Couldn't read HashGG's diagnostics. Check the dashboard once it loads."
+    # /api/diag can hang rather than answer when Datum isn't responding, so an
+    # empty result here usually means Datum, not HashGG.
+    warn "HashGG's diagnostics didn't answer in time."
+    warn "That usually means Datum Gateway isn't responding — check: ./start-hashgg.sh logs datum"
     return 0
   fi
 
