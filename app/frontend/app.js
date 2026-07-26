@@ -1127,8 +1127,7 @@ function renderBtcGuidance(d) {
       <p>On this version of StartOS, the Bitcoin package rewrites its configuration every time it
       starts and only ever advertises its Tor address. There is no way to tell it about a public
       address, so HashGG cannot help here.</p>
-      <p class="hint">Upgrading to StartOS 0.4.0 enables this. If your Bitcoin node runs on a
-      different machine, you can point HashGG at it instead.</p>`;
+      <p class="hint">Upgrading to StartOS 0.4.0 enables this.</p>`;
   }
 }
 
