@@ -92,6 +92,11 @@ const els = {
   btcSshCmd: document.getElementById('btc-ssh-cmd'),
   btnBtcCopySsh: document.getElementById('btn-btc-copy-ssh'),
   btcCopySshFeedback: document.getElementById('btc-copy-ssh-feedback'),
+  btnBtcIpContinue: document.getElementById('btn-btc-ip-continue'),
+  btcIpStatus: document.getElementById('btc-ip-status'),
+  btcSshBlock: document.getElementById('btc-ssh-block'),
+  btcStepA: document.getElementById('btc-step-a'),
+  btcStepConfig: document.getElementById('btc-step-config'),
   btcBlockA: document.getElementById('btc-block-a'),
   btnBtcCopyA: document.getElementById('btn-btc-copy-a'),
   btcCopyAFeedback: document.getElementById('btc-copy-a-feedback'),
@@ -1429,7 +1434,51 @@ function updateBtcSshCmd() {
   const ip = els.btcVpsIp.value.trim();
   els.btcSshCmd.textContent = ip ? `ssh root@${ip}` : 'ssh root@…';
 }
-els.btcVpsIp.addEventListener('input', updateBtcSshCmd);
+
+// Catch here what would otherwise fail much later and less clearly. A private
+// address is the common mistake — someone reads their own LAN address off the
+// wrong page — and Block A's pre-flight refuses that machine anyway, so saying
+// so now saves a wasted round trip through a script and a VPS.
+function btcIpProblem(raw) {
+  const v = String(raw || '').trim();
+  if (!v) return 'Enter the IP address from the Manage page.';
+  if (v.length > 255 || v[0] === '-' || !/^[a-zA-Z0-9.\-:]+$/.test(v)) {
+    return 'That does not look like an IP address.';
+  }
+  if (/^[\d.]+$/.test(v)) {
+    const parts = v.split('.');
+    const bad = parts.length !== 4
+      || parts.some((n) => !/^\d{1,3}$/.test(n) || Number(n) > 255);
+    if (bad) return 'That does not look like an IP address.';
+    if (/^10\./.test(v) || /^192\.168\./.test(v) || /^172\.(1[6-9]|2\d|3[01])\./.test(v)
+        || /^127\./.test(v) || /^169\.254\./.test(v)
+        || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(v)) {
+      return 'That is a private address, not a public one. Your VPS has its own public IP '
+           + 'address — check the Manage page.';
+    }
+  }
+  return null;
+}
+
+function btcIpContinue() {
+  const problem = btcIpProblem(els.btcVpsIp.value);
+  if (problem) {
+    setBtcStatus(els.btcIpStatus, problem, 'err');
+    return;
+  }
+  setBtcStatus(els.btcIpStatus, '', '');
+  updateBtcSshCmd();
+  els.btcSshBlock.style.display = 'block';
+  els.btcStepA.style.display = 'list-item';
+  els.btcStepConfig.style.display = 'list-item';
+}
+
+els.btcVpsIp.addEventListener('input', () => {
+  updateBtcSshCmd();
+  setBtcStatus(els.btcIpStatus, '', '');   // clear a stale complaint as they retype
+});
+els.btcVpsIp.addEventListener('keydown', (e) => { if (e.key === 'Enter') btcIpContinue(); });
+els.btnBtcIpContinue.addEventListener('click', btcIpContinue);
 els.btnBtcCopySsh.addEventListener('click', () =>
   copyText(els.btcSshCmd.textContent, els.btcCopySshFeedback, els.btnBtcCopySsh));
 
