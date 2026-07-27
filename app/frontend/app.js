@@ -1135,10 +1135,19 @@ function renderBtcGuidance(d) {
         — pick whichever you prefer.</p>
       </div>
 
-      <p>If you do need the steps below, you will need a <strong>second VPS</strong> running
-      <strong>StartTunnel</strong> — separate from the one carrying your mining tunnel, because
-      StartTunnel takes over the firewall on whatever machine it runs on.</p>
-      <p class="hint">HashGG writes the commands for you — StartOS then opens the port
+      <p>If you do need the steps below, you will need a <strong>second VPS</strong> — a rented
+      Linux machine, separate from the one carrying your mining tunnel. It has to be a machine of
+      its own, because what we install takes over that machine's firewall.</p>
+      <p><strong>Get a blank one — you do not set anything up on it yourself.</strong> The first
+      step below installs and configures everything for you, including <strong>StartTunnel</strong>,
+      the Start9 software that links the VPS to your server.</p>
+      <p class="hint"><strong>Where to get one:</strong> around $5 a month is plenty — this needs a
+      steady address and generous data transfer, not a fast machine.
+      <a href="https://app.bitlaunch.io/signup" target="_blank" rel="noopener">BitLaunch</a> is the
+      same provider we suggest for the mining tunnel, and takes Bitcoin. Two things to check before
+      you pay: choose <strong>Debian 12 or newer</strong> (Debian specifically — Ubuntu will not
+      work), and make sure it comes with its own <strong>dedicated public IPv4 address</strong>.</p>
+      <p class="hint">After that, HashGG writes the commands for you — StartOS then opens the port
       and tells your node to advertise it, so there is no config line to paste.</p>`;
   } else {
     els.btcGuidance.innerHTML = `
