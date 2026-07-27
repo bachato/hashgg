@@ -222,11 +222,11 @@ chown root:root ${PAYLOAD_PATH}
 # HashGG holds from being a shell on this machine.
 cat > ${SHIM_PATH} <<'HASHGG_SHIM_EOF'
 #!/bin/bash
-case "\${SSH_ORIGINAL_COMMAND:-setup}" in
+case "\${SSH_ORIGINAL_COMMAND:-}" in
   setup)   exec sudo -n ${PAYLOAD_PATH} setup ;;
   cleanup) exec sudo -n ${PAYLOAD_PATH} cleanup ;;
 esac
-echo "HASHGG_FAIL Unsupported request."
+echo "HASHGG_FAIL No action requested."
 exit 1
 HASHGG_SHIM_EOF
 chmod 755 ${SHIM_PATH}
