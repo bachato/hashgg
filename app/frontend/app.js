@@ -113,6 +113,8 @@ const els = {
   btcCopySosFeedback: document.getElementById('btc-copy-sos-feedback'),
   btcDoneEndpoint: document.getElementById('btc-done-endpoint'),
   btcDoneAgent: document.getElementById('btc-done-agent'),
+  btnBtcRecheck: document.getElementById('btn-btc-recheck'),
+  btcRecheckStatus: document.getElementById('btc-recheck-status'),
   btcVpsIp: document.getElementById('btc-vps-ip'),
   btcSshCmd: document.getElementById('btc-ssh-cmd'),
   btnBtcCopySsh: document.getElementById('btn-btc-copy-ssh'),
@@ -1145,11 +1147,13 @@ function renderBtcGuidance(d) {
   els.btcGuidance.style.display = 'block';
   // On this path HashGG owns no tunnel, so a completed setup would otherwise
   // leave no trace after a reload — on the longest flow of the three.
-  // Past tense deliberately. StartOS owns the tunnel here, so we have no live
-  // signal — the address could have stopped working and we would not know.
-  // "verified" is what we can actually stand behind; "reachable" would not be.
+  // "verified at <ip>" was read as a status nobody could interpret — is that
+  // working or not? Say plainly that it is on, and carry the age of the check
+  // instead of hedging the verb: StartOS owns the tunnel here, so there is no
+  // live signal, and a timestamp says how much to trust it without asking the
+  // reader to parse a tense.
   els.btcSummaryNote.textContent = d.verified_endpoint
-    ? `· verified at ${d.verified_endpoint}`
+    ? `· on — reachable at ${d.verified_endpoint}${d.verified_at ? ` · checked ${relAge(d.verified_at)}` : ''}`
     : (d.detected ? `· ${shortAgent(d.detected.user_agent)} found` : '');
 
   els.btcStartos.style.display = (d.capability === 'guided') ? 'block' : 'none';
@@ -1205,6 +1209,20 @@ function renderBtcGuidance(d) {
       address, so HashGG cannot help here.</p>
       <p class="hint">Upgrading to StartOS 0.4.0 enables this.</p>`;
   }
+}
+
+// "2026-07-26T12:00:00Z" -> "2 hours ago". Deliberately coarse: the point is
+// whether the check is recent, not when exactly it happened.
+function relAge(iso) {
+  const then = Date.parse(iso);
+  if (!then) return 'recently';
+  const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
+  if (mins < 2) return 'just now';
+  if (mins < 60) return `${mins} minutes ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return hours === 1 ? 'an hour ago' : `${hours} hours ago`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? 'yesterday' : `${days} days ago`;
 }
 
 // "/Satoshi:29.3.0/Knots:20260508/" -> "Knots 29.3.0"
@@ -1442,13 +1460,35 @@ function btcWizLaunch() {
 // with a different label, rather than one button that guesses.
 function btcWizShowResult() {
   btcWizReturn = currentScreen || 'dashboard';
-  btcShowDone(btcState && btcState.verified_endpoint, btcState && btcState.verified_agent);
+  btcShowDone(btcState && btcState.verified_endpoint,
+              btcState && btcState.verified_agent,
+              btcState && btcState.verified_at);
 }
 
-function btcShowDone(endpoint, agent) {
+function btcShowDone(endpoint, agent, checkedAt) {
   els.btcDoneEndpoint.textContent = endpoint || '—';
-  els.btcDoneAgent.textContent = agent ? `${shortAgent(agent)} answered from the internet.` : '';
+  const who = agent ? `${shortAgent(agent)} answered from the internet` : 'Your node answered from the internet';
+  els.btcDoneAgent.textContent = checkedAt ? `${who}, checked ${relAge(checkedAt)}.` : `${who}.`;
+  setBtcStatus(els.btcRecheckStatus, '', '');
   btcWizGo('btc-done');
+}
+
+// The claim on the dashboard is only as good as the last check, so let people
+// make a new one rather than take it on trust.
+async function btcRecheck() {
+  setBtcStatus(els.btcRecheckStatus, 'Checking from the internet…', '');
+  try {
+    const r = await api('POST', '/btc/verify', {});
+    if (r.ok && !r.warning) {
+      setBtcStatus(els.btcRecheckStatus, 'Still reachable', 'ok');
+      lastBtcSig = null;
+      await refreshBtcStatus();
+    } else {
+      setBtcStatus(els.btcRecheckStatus, r.warning || verifyHint(r.error), 'err');
+    }
+  } catch (err) {
+    setBtcStatus(els.btcRecheckStatus, err.message, 'err');
+  }
 }
 
 // --- the generated blocks ---
@@ -1610,6 +1650,7 @@ async function btcStartosCleanup() {
 els.btnBtcWizLaunch.addEventListener('click', btcWizLaunch);
 els.btnBtcWizResult.addEventListener('click', btcWizShowResult);
 els.btnBtcWizAgain.addEventListener('click', () => btcWizGo('btc-intro'));
+els.btnBtcRecheck.addEventListener('click', btcRecheck);
 els.btnBtcWizStart.addEventListener('click', () => btcWizGo('btc-vps'));
 els.btnBtcWizToLogin.addEventListener('click', () => btcWizGo('btc-login'));
 els.btnBtcWizToPaste.addEventListener('click', () => {
