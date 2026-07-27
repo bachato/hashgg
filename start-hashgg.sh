@@ -261,13 +261,14 @@ BITCOIN_RPC_PORT="8332"
 
 bitcoin_pid() {
   # `pgrep -x` misses bitcoin-qt on some systems; match on the full command line.
+  # Match case-insensitively: the macOS app ships the binary as `Bitcoin-Qt`.
   #
   # The `|| true` matters: with `set -o pipefail`, a grep that matches nothing
   # makes the whole pipeline return 1, which under `set -e` would abort the
   # script the moment it's used in an assignment — i.e. exactly when Bitcoin
   # isn't running, which is a case we want to handle gracefully.
   ps -axo pid=,args= 2>/dev/null \
-    | grep -E 'bitcoin-qt|bitcoind' | grep -v grep \
+    | grep -iE 'bitcoin-qt|bitcoind' | grep -v grep \
     | awk '{print $1}' | head -1 || true
 }
 
