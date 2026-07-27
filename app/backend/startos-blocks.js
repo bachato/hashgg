@@ -301,6 +301,92 @@ fi
 }
 
 /**
+ * The block that disconnects a previous VPS.
+ *
+ * This exists because the honest instruction — "remove the gateway, then check
+ * System > Gateways to confirm wg0 is actually gone, and run it again if it is
+ * not" — is three pieces of vocabulary and a verification burden aimed at
+ * someone who does not want to know what a gateway is. Worse, `net tunnel
+ * remove` has been observed reporting success without removing anything, and a
+ * tunnel left pointing at a VPS that is going away takes DNS down with it, which
+ * stops mining. So the script does the checking, retries, and says one thing at
+ * the end.
+ */
+function buildReplaceBlock() {
+  return `# HashGG — disconnect your current VPS. Paste into a terminal on StartOS.
+
+python3 - <<'HASHGG_REPLACE_EOF'
+import json, subprocess, sys, time
+
+def run(args):
+    r = subprocess.run(["start-cli"] + args, capture_output=True, text=True)
+    return r.returncode, r.stdout.strip(), r.stderr.strip()
+
+def tunnels():
+    code, out, _ = run(["net", "gateway", "list", "--format", "json"])
+    if code != 0:
+        return None
+    try:
+        return sorted(k for k in json.loads(out) if k.startswith("wg"))
+    except Exception:
+        return None
+
+found = tunnels()
+if found is None:
+    print("!! Could not read this server's network settings.")
+    sys.exit(1)
+if not found:
+    print("Nothing to disconnect — no VPS is connected to this server.")
+    sys.exit(0)
+
+# Switch the public address off first. That is what makes StartOS stop telling
+# the node to advertise it and drop the port forward; removing the tunnel alone
+# would leave the node announcing an address that is about to stop working.
+code, out, _ = run(["package", "host", "bitcoind", "binding", "peer", "list", "--format", "json"])
+if code == 0:
+    try:
+        bindings = json.loads(out)
+    except Exception:
+        bindings = {}
+    for port, b in bindings.items():
+        for a in b.get("addresses", {}).get("enabled", []):
+            for cand in b.get("addresses", {}).get("available", []):
+                gw = (cand.get("metadata") or {}).get("gateway") or ""
+                same = cand.get("hostname") == (a if isinstance(a, str) else a.get("hostname"))
+                if gw.startswith("wg") and (same or str(a).startswith(str(cand.get("hostname")))):
+                    run(["package", "host", "bitcoind", "binding", "peer",
+                         "set-address-enabled", "--address", json.dumps(cand),
+                         "--enabled", "false", str(port)])
+    time.sleep(3)
+
+# Remove, then confirm. The command has been seen to return success while
+# leaving the tunnel in place, so its exit status is not evidence.
+for name in found:
+    for attempt in range(4):
+        run(["net", "tunnel", "remove", name])
+        time.sleep(3)
+        still = tunnels()
+        if still is not None and name not in still:
+            break
+    else:
+        print("")
+        print("!! Could not disconnect %s. Try running this again." % name)
+        sys.exit(1)
+
+print("")
+print("  ==================================================")
+print("")
+print("     Your old VPS is disconnected.")
+print("")
+print("     Go back to HashGG and click Continue.")
+print("")
+print("  ==================================================")
+print("")
+HASHGG_REPLACE_EOF
+`;
+}
+
+/**
  * Parse the `HASHGG_VERIFY host:port` line the user copies back.
  */
 function parseVerifyLine(raw) {
@@ -315,6 +401,7 @@ function parseVerifyLine(raw) {
 module.exports = {
   validateWireGuardConfig,
   buildBlockA,
+  buildReplaceBlock,
   buildBlockB,
   parseVerifyLine,
   HEREDOC_DELIMITER,

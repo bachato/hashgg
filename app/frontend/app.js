@@ -18,6 +18,7 @@ const screens = {
   // Bitcoin reachability wizard. Additive: the mining screens above and the
   // router itself are untouched.
   'btc-intro': document.getElementById('screen-btc-intro'),
+  'btc-replace': document.getElementById('screen-btc-replace'),
   'btc-vps': document.getElementById('screen-btc-vps'),
   'btc-login': document.getElementById('screen-btc-login'),
   'btc-paste': document.getElementById('screen-btc-paste'),
@@ -116,6 +117,14 @@ const els = {
   btcDoneAgent: document.getElementById('btc-done-agent'),
   btcCleanupWarn: document.getElementById('btc-cleanup-warn'),
   btcIntroReplace: document.getElementById('btc-intro-replace'),
+  btcReplaceSsh: document.getElementById('btc-replace-ssh'),
+  btcReplaceSshNote: document.getElementById('btc-replace-ssh-note'),
+  btnBtcCopyRepSsh: document.getElementById('btn-btc-copy-rep-ssh'),
+  btcCopyRepSshFeedback: document.getElementById('btc-copy-rep-ssh-feedback'),
+  btcReplaceBlock: document.getElementById('btc-replace-block'),
+  btnBtcCopyRep: document.getElementById('btn-btc-copy-rep'),
+  btcCopyRepFeedback: document.getElementById('btc-copy-rep-feedback'),
+  btnBtcReplaceDone: document.getElementById('btn-btc-replace-done'),
   btnBtcRecheck: document.getElementById('btn-btc-recheck'),
   btcRecheckStatus: document.getElementById('btc-recheck-status'),
   btcVpsIp: document.getElementById('btc-vps-ip'),
@@ -1452,19 +1461,35 @@ let btcWizReturn = 'dashboard';
 // the server name — filling it in beats asking someone to substitute a
 // placeholder they have to go and look up. Falls back to the placeholder when
 // reached by IP or over Tor, where the name is genuinely not knowable.
-function fillStartosSshCmd() {
+function fillStartosSshCmd(cmdEl, noteEl) {
   const m = String(location.hostname || '').match(/^(?:.*\.)?([a-z0-9-]+)\.local$/i);
   if (m && m[1] && m[1] !== 'localhost') {
-    els.btcStartosSsh.textContent = `ssh start9@${m[1]}.local`;
-    els.btcStartosSshNote.style.display = 'none';
+    cmdEl.textContent = `ssh start9@${m[1]}.local`;
+    noteEl.style.display = 'none';
   } else {
-    els.btcStartosSsh.textContent = 'ssh start9@your-server.local';
-    els.btcStartosSshNote.style.display = 'block';
+    cmdEl.textContent = 'ssh start9@your-server.local';
+    noteEl.style.display = 'block';
+  }
+}
+
+let btcReplaceLoaded = false;
+async function loadReplaceBlock() {
+  if (btcReplaceLoaded) return;
+  try {
+    const r = await api('GET', '/btc/startos/block-replace');
+    els.btcReplaceBlock.textContent = r.script;
+    btcReplaceLoaded = true;
+  } catch (err) {
+    els.btcReplaceBlock.textContent = `Could not generate the commands: ${err.message}`;
   }
 }
 
 function btcWizGo(name) {
-  if (name === 'btc-startos') fillStartosSshCmd();
+  if (name === 'btc-startos') fillStartosSshCmd(els.btcStartosSsh, els.btcStartosSshNote);
+  if (name === 'btc-replace') {
+    fillStartosSshCmd(els.btcReplaceSsh, els.btcReplaceSshNote);
+    loadReplaceBlock();
+  }
   // Arriving at the intro with a VPS already recorded means this is a move, not
   // a first run, and the old gateway has to go first.
   if (name === 'btc-intro') {
@@ -1682,7 +1707,13 @@ els.btnBtcWizLaunch.addEventListener('click', btcWizLaunch);
 els.btnBtcWizResult.addEventListener('click', btcWizShowResult);
 els.btnBtcWizAgain.addEventListener('click', () => btcWizGo('btc-intro'));
 els.btnBtcRecheck.addEventListener('click', btcRecheck);
-els.btnBtcWizStart.addEventListener('click', () => btcWizGo('btc-vps'));
+els.btnBtcWizStart.addEventListener('click', () =>
+  btcWizGo(btcState && btcState.vps_host ? 'btc-replace' : 'btc-vps'));
+els.btnBtcReplaceDone.addEventListener('click', () => btcWizGo('btc-vps'));
+els.btnBtcCopyRep.addEventListener('click', () =>
+  copyText(els.btcReplaceBlock.textContent, els.btcCopyRepFeedback, els.btnBtcCopyRep));
+els.btnBtcCopyRepSsh.addEventListener('click', () =>
+  copyText(els.btcReplaceSsh.textContent, els.btcCopyRepSshFeedback, els.btnBtcCopyRepSsh));
 els.btnBtcWizToLogin.addEventListener('click', () => btcWizGo('btc-login'));
 els.btnBtcWizToPaste.addEventListener('click', () => {
   const problem = btcIpProblem(els.btcVpsIp.value);

@@ -451,19 +451,49 @@
       </div>
 
       <div id="btc-intro-replace" class="warn-box" style="display:none;">
-        <p><strong>You already have this set up on another VPS.</strong> Remove that one from
-        StartOS <em>first</em> — leaving it connected to a VPS you stop using will break name
-        lookups on this server, which stops your mining as well.</p>
-        <p>In a terminal on StartOS, run this, then check that <code>wg0</code> is gone from
-        <strong>System → Gateways</strong> before continuing:</p>
-        <div class="code-hint" id="btc-intro-replace-cmd">start-cli net tunnel remove wg0</div>
-        <p class="hint">It has been seen to report success without removing anything, so run it
-        again if the gateway is still listed.</p>
+        <strong>You already have this set up on another VPS.</strong> There is one thing to do
+        first, on the next screen, so the old one is properly disconnected.
       </div>
 
       <p class="hint">Four steps, about ten minutes, most of it waiting.</p>
       <div class="actions">
         <button id="btn-btc-wiz-start" class="btn btn-primary">Continue</button>
+        <button class="btn btn-secondary btc-wiz-exit">Cancel</button>
+      </div>
+    </div>
+
+    <div id="screen-btc-replace" class="screen" style="display:none;">
+      <h2>First — disconnect your current VPS</h2>
+      <p>Your server is still connected to the VPS you set up before. That has to be
+      disconnected before connecting a new one.</p>
+      <div class="hint-box">
+        This matters more than it sounds: a server left connected to a VPS that has gone away
+        stops being able to look up addresses on the internet, and <strong>your mining stops
+        too</strong>. It is not obvious when it happens, so it is worth doing properly.
+      </div>
+
+      <p>Open a terminal and connect to your StartOS server:</p>
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+        <div class="code-hint" id="btc-replace-ssh" style="flex:1;margin:0;">ssh start9@your-server.local</div>
+        <button id="btn-btc-copy-rep-ssh" class="btn btn-secondary btn-sm">Copy</button>
+        <span id="btc-copy-rep-ssh-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+      </div>
+      <p class="hint" id="btc-replace-ssh-note">Replace <code>your-server</code> with your own
+      server's name — the one in the address you use to reach StartOS.</p>
+
+      <p>Then paste this. It does the disconnecting and checks that it worked:</p>
+      <div class="script-box">
+        <pre id="btc-replace-block" class="script-pre">Loading…</pre>
+      </div>
+      <div class="actions">
+        <button id="btn-btc-copy-rep" class="btn btn-secondary btn-sm">Copy</button>
+        <span id="btc-copy-rep-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+      </div>
+      <p class="hint">It ends by telling you it is disconnected. If it says it could not,
+      just run it again.</p>
+
+      <div class="actions">
+        <button id="btn-btc-replace-done" class="btn btn-primary">It says disconnected →</button>
         <button class="btn btn-secondary btc-wiz-exit">Cancel</button>
       </div>
     </div>
@@ -507,6 +537,7 @@
       <div class="actions">
         <button id="btn-btc-wiz-to-login" class="btn btn-primary">I have a VPS →</button>
         <button class="btn btn-secondary btc-wiz-back" data-back="btc-intro">← Back</button>
+
       </div>
     </div>
 

@@ -584,6 +584,12 @@ async function handleApi(req, res) {
     return;
   }
 
+  // GET /api/btc/startos/block-replace — disconnect a previously-set-up VPS
+  if (pathname === '/api/btc/startos/block-replace' && req.method === 'GET') {
+    sendJson(res, 200, { script: startosBlocks.buildReplaceBlock() });
+    return;
+  }
+
   // POST /api/btc/startos/setup — HashGG runs the setup on the VPS itself
   if (pathname === '/api/btc/startos/setup' && req.method === 'POST') {
     if (rateLimited('btc-setup', 6)) {
