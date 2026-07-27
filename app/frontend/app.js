@@ -115,6 +115,7 @@ const els = {
   // StartOS 0.4.0 guided flow
   btnBtcWizLaunch: document.getElementById('btn-btc-wiz-launch'),
   btnBtcWizResult: document.getElementById('btn-btc-wiz-result'),
+  btnBtcForget: document.getElementById('btn-btc-forget'),
   btnBtcWizAgain: document.getElementById('btn-btc-wiz-again'),
   btnBtcWizStart: document.getElementById('btn-btc-wiz-start'),
   btnBtcWizToLogin: document.getElementById('btn-btc-wiz-to-login'),
@@ -1100,6 +1101,7 @@ function renderBtc(d) {
   const finished = !!d.verified_at && d.tunnel_status === 'connected';
   els.btnBtcWizLaunch.style.display = d.enabled ? 'none' : 'inline-block';
   els.btnBtcWizResult.style.display = finished ? 'inline-block' : 'none';
+  els.btnBtcForget.style.display = d.vps_host ? 'inline-block' : 'none';
 
   if (!d.enabled) {
     els.btcIntro.style.display = 'block';
@@ -1775,6 +1777,24 @@ async function btcUConnect() {
 
 els.btnBtcUToConnect.addEventListener('click', btcUConnect);
 els.btnBtcURetry.addEventListener('click', btcUConnect);
+
+els.btnBtcForget.addEventListener('click', async () => {
+  if (!confirm('This forgets the server HashGG is using for your Bitcoin node and stops the '
+             + 'connection, so you can set it up again from the start.\n\n'
+             + 'Your mining is not affected. Continue?')) return;
+  try {
+    const r = await api('POST', '/btc/vps/reset', {});
+    const line = r.cleanup && r.cleanup.externalip_line;
+    if (line) {
+      els.btcCleanupNote.style.display = 'block';
+      els.btcCleanupNote.innerHTML = '<strong>One thing left to tidy up.</strong> Remove '
+        + `<code>${line}</code> from your Bitcoin node's settings — it points at a connection `
+        + 'that no longer exists.';
+    }
+    lastBtcSig = null;
+    await refreshBtcStatus();
+  } catch (err) { showError(err.message); }
+});
 
 els.btnBtcWizLaunch.addEventListener('click', btcWizLaunch);
 els.btnBtcWizResult.addEventListener('click', btcWizShowResult);
