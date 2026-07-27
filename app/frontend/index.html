@@ -358,6 +358,18 @@
                   <button id="btn-btc-copy-a" class="btn btn-secondary btn-sm">Copy</button>
                   <span id="btc-copy-a-feedback" class="copy-feedback" style="display:none;">Copied!</span>
                 </div>
+                <p class="hint">It finishes by printing a block of configuration between two
+                <code>COPY</code> lines — that is what the next step needs.</p>
+                <details class="btc-sub">
+                  <summary>It stopped with a message instead</summary>
+                  <p class="hint">Then it did not finish, and there is nothing to paste into the
+                  next step yet. Any message beginning <code>!!</code> says what to do — follow
+                  that first. Nothing is left half-configured, so it is always safe to start
+                  again with:</p>
+                  <div class="code-hint">bash /root/hashgg-starttunnel.sh</div>
+                  <p class="hint">If your connection closed on its own, wait a minute, run the
+                  <code>ssh</code> command from the previous step again, then that one.</p>
+                </details>
               </li>
 
               <li id="btc-step-config" style="display:none;">

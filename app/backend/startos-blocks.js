@@ -80,7 +80,7 @@ function validateWireGuardConfig(raw) {
 const SETUP_DELIMITER = 'HASHGG_SETUP_EOF';
 
 function buildBlockA() {
-  return `cat > /tmp/hashgg-starttunnel.sh <<'${SETUP_DELIMITER}'
+  return `cat > /root/hashgg-starttunnel.sh <<'${SETUP_DELIMITER}'
 #!/bin/bash
 # HashGG — StartTunnel setup.
 set -uo pipefail
@@ -92,8 +92,10 @@ die() {
   echo ""
   echo "!! \${1}"
   echo ""
-  echo "   Nothing further was changed. You are still logged in to the VPS."
-  echo "   To try again after fixing it:  bash /tmp/hashgg-starttunnel.sh"
+  echo "   Nothing further was changed, and you are still logged in to the VPS."
+  echo "   Once that is sorted, run this to pick up from the top:"
+  echo ""
+  echo "       bash /root/hashgg-starttunnel.sh"
   exit 1
 }
 
@@ -151,13 +153,41 @@ fi
 # an empty result and no hint that the service is the reason. Seen in testing.
 echo ""
 echo "=== Waiting for StartTunnel to start ==="
+wait_for_service() {
+  for i in \$(seq 1 30); do
+    if systemctl is-active --quiet start-tunneld.service; then return 0; fi
+    sleep 1
+  done
+  return 1
+}
 systemctl start start-tunneld.service >/dev/null 2>&1 || true
-READY=""
-for i in \$(seq 1 30); do
-  if systemctl is-active --quiet start-tunneld.service; then READY=yes; break; fi
-  sleep 1
-done
-[ -n "\$READY" ] || die "StartTunnel installed but its service will not start. Run 'systemctl status start-tunneld.service' to see why. On a fresh Debian VPS this usually means a reboot is needed — try 'reboot', log back in, then: bash /tmp/hashgg-starttunnel.sh"
+if ! wait_for_service; then
+  # One restart before involving the user. In the reported failure the service
+  # was simply slow — it was running by the time the VPS was inspected — so this
+  # resolves the case that actually happened without anyone having to do
+  # anything.
+  echo "   taking longer than usual — restarting it"
+  systemctl restart start-tunneld.service >/dev/null 2>&1 || true
+  if ! wait_for_service; then
+    echo ""
+    echo "!! StartTunnel is installed, but its service has not started."
+    echo ""
+    echo "   Restarting the VPS almost always fixes this. Three things to do:"
+    echo ""
+    echo "     1. Type:  reboot"
+    echo "        Your connection will close straight away. That is expected."
+    echo ""
+    echo "     2. Wait about a minute, then connect again with the same"
+    echo "        'ssh root@...' command HashGG gave you."
+    echo ""
+    echo "     3. Type:  bash /root/hashgg-starttunnel.sh"
+    echo ""
+    echo "   Nothing is half-finished — that starts again from the top."
+    echo "   If it still stops here afterwards, this says why:"
+    echo "       systemctl status start-tunneld.service"
+    exit 1
+  fi
+fi
 echo "   running"
 
 echo ""
@@ -195,7 +225,7 @@ echo "==================== COPY EVERYTHING ABOVE ===================="
 echo ""
 echo "Paste that into HashGG to get your next command."
 ${SETUP_DELIMITER}
-bash /tmp/hashgg-starttunnel.sh
+bash /root/hashgg-starttunnel.sh
 `;
 }
 
