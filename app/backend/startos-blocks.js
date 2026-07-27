@@ -65,39 +65,59 @@ function validateWireGuardConfig(raw) {
 /**
  * Block A — paste into the new VPS as root.
  *
- * Every command was executed on real hardware; the comments record the three
- * traps that are not obvious from the documentation.
+ * Delivered as a quoted heredoc plus `bash`, NOT as bare lines to paste. That
+ * is not cosmetic. Pasted line by line into a login shell, the whole thing runs
+ * as interactive input: every line is echoed back and interleaves with the
+ * output, which is unreadable, and `set -e` firing on any failure kills the
+ * LOGIN SHELL — the user's SSH session simply closes, mid-run, with no error
+ * and nothing to act on. Inside a heredoc the text is inert until `bash` runs
+ * it as a child, so a failure ends the script and leaves the user logged in
+ * looking at the reason. Observed in testing, not theorised.
+ *
+ * Every command was executed on real hardware; the comments record the traps
+ * that are not obvious from the documentation.
  */
+const SETUP_DELIMITER = 'HASHGG_SETUP_EOF';
+
 function buildBlockA() {
-  return `#!/bin/bash
-# HashGG — StartTunnel setup. Paste this into your NEW VPS as root.
-set -euo pipefail
+  return `cat > /tmp/hashgg-starttunnel.sh <<'${SETUP_DELIMITER}'
+#!/bin/bash
+# HashGG — StartTunnel setup.
+set -uo pipefail
+
+# One place to fail from, so every exit says what to do next rather than just
+# stopping. Without this the script ends on a bare message the user has to
+# scroll back through the install output to find.
+die() {
+  echo ""
+  echo "!! \${1}"
+  echo ""
+  echo "   Nothing further was changed. You are still logged in to the VPS."
+  echo "   To try again after fixing it:  bash /tmp/hashgg-starttunnel.sh"
+  exit 1
+}
 
 echo "=== Checking this machine ==="
 
 # Our own pre-flight rather than the installer's, whose error text and code
 # disagree about which Debian versions are supported.
-if [ ! -f /etc/os-release ]; then echo "!! Cannot identify this OS. Debian 12 or newer is required."; exit 1; fi
+[ -f /etc/os-release ] || die "Cannot identify this operating system. Debian 12 or newer is required."
 . /etc/os-release
 if [ "\${ID:-}" != "debian" ]; then
-  echo "!! This is \${PRETTY_NAME:-unknown}. StartTunnel supports Debian only — Ubuntu will not work."
-  exit 1
+  die "This is \${PRETTY_NAME:-unknown}. StartTunnel runs on Debian only — Ubuntu will not work. Rebuild this VPS with a Debian image."
 fi
 MAJOR="\${VERSION_ID%%.*}"
 if [ "\${MAJOR:-0}" -lt 12 ]; then
-  echo "!! Debian \$MAJOR is too old. Debian 12 (bookworm) or newer is required."
-  exit 1
+  die "Debian \$MAJOR is too old. Debian 12 (bookworm) or newer is required."
 fi
 
 # A dedicated public IPv4 is required — port forwarding cannot work behind a
 # shared or CGNAT address.
-WAN=\$(ip -4 -o addr show scope global 2>/dev/null | awk '{print \$4}' | cut -d/ -f1 | head -1)
-if [ -z "\$WAN" ]; then echo "!! No public IPv4 address found on this machine."; exit 1; fi
+WAN=\$(ip -4 -o addr show scope global 2>/dev/null | awk '{print \$4}' | cut -d/ -f1 | head -1) || true
+[ -n "\$WAN" ] || die "No public IPv4 address found on this machine."
 case "\$WAN" in
   10.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|100.6[4-9].*|100.[7-9][0-9].*|100.1[0-1][0-9].*|100.12[0-7].*)
-    echo "!! \$WAN is a private address — this VPS is behind NAT or CGNAT."
-    echo "!! Port forwarding cannot work here. You need a dedicated public IPv4."
-    exit 1 ;;
+    die "\$WAN is a private address, so this VPS is behind NAT or CGNAT. Port forwarding cannot work here — you need a VPS with its own dedicated public IPv4." ;;
 esac
 echo "   Debian \$MAJOR, public address \$WAN — OK"
 
@@ -115,32 +135,49 @@ sleep 10
 echo ""
 if command -v start-tunnel >/dev/null 2>&1; then
   # Re-running matters: if the first attempt died partway (a dropped SSH
-  # session, a Ctrl-C), the user's instinct is to paste the block again. The
-  # upstream installer PROMPTS for confirmation when the package is already
-  # present, so running it again would stall at a question this script cannot
-  # answer. Skip it — the configuration steps below are safe to repeat.
+  # session, a Ctrl-C), the user's instinct is to run it again. The upstream
+  # installer PROMPTS for confirmation when the package is already present, so
+  # running it again would stall at a question this script cannot answer. Skip
+  # it — the configuration steps below are safe to repeat.
   echo "=== StartTunnel is already installed — skipping installation ==="
 else
   echo "=== Installing StartTunnel ==="
-  curl -sSL https://start9labs.github.io/start-tunnel/install.sh | sh
+  curl -sSL https://start9labs.github.io/start-tunnel/install.sh | sh || \\
+    die "The StartTunnel installer failed. Check this VPS can reach the internet, then try again."
 fi
+
+# The installer reports success even when the service does not come up, and
+# every command below reads from it — so without this the next step fails with
+# an empty result and no hint that the service is the reason. Seen in testing.
+echo ""
+echo "=== Waiting for StartTunnel to start ==="
+systemctl start start-tunneld.service >/dev/null 2>&1 || true
+READY=""
+for i in \$(seq 1 30); do
+  if systemctl is-active --quiet start-tunneld.service; then READY=yes; break; fi
+  sleep 1
+done
+[ -n "\$READY" ] || die "StartTunnel installed but its service will not start. Run 'systemctl status start-tunneld.service' to see why. On a fresh Debian VPS this usually means a reboot is needed — try 'reboot', log back in, then: bash /tmp/hashgg-starttunnel.sh"
+echo "   running"
 
 echo ""
 echo "=== Configuring ==="
 
 # A "Default Subnet" already exists after install, but its CIDR is generated
 # per install, so it has to be discovered. jq is NOT present on a stock Debian
-# image, so parse without it.
-SUBNET=\$(start-tunnel db dump -p /wg 2>/dev/null | grep -oE '"[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+"' | head -1 | tr -d '"')
-if [ -z "\$SUBNET" ]; then echo "!! Could not find the default subnet."; exit 1; fi
+# image, so parse without it. The trailing '|| true' matters: grep exits
+# non-zero when it finds nothing, and with pipefail that would abort before the
+# check below could explain what went wrong.
+SUBNET=\$(start-tunnel db dump -p /wg 2>/dev/null | grep -oE '"[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+"' | head -1 | tr -d '"') || true
+[ -n "\$SUBNET" ] || die "Could not read StartTunnel's default subnet. Check 'systemctl status start-tunneld.service'."
 echo "   subnet: \$SUBNET"
 
 # --kind server is what grants allowAutoPortForward, which is how StartOS later
 # creates the port forward itself over PCP. Without it you would have to add the
 # forward by hand, with a port StartOS has not assigned yet.
 start-tunnel device add --kind server "\$SUBNET" "StartOS" >/dev/null 2>&1 || true
-DEV_IP=\$(start-tunnel device list "\$SUBNET" 2>/dev/null | awk '/StartOS/{print \$4}' | head -1)
-if [ -z "\$DEV_IP" ]; then echo "!! Could not add the StartOS device."; exit 1; fi
+DEV_IP=\$(start-tunnel device list "\$SUBNET" 2>/dev/null | awk '/StartOS/{print \$4}' | head -1) || true
+[ -n "\$DEV_IP" ] || die "Could not create the StartOS device in StartTunnel."
 echo "   device: \$DEV_IP"
 
 # REQUIRED. Without a WAN address, show-config fails with "Not Found: a public
@@ -148,12 +185,17 @@ echo "   device: \$DEV_IP"
 # "Serialization Error: duplicate key: subnet"), so set it on the device.
 start-tunnel device set-wan "\$SUBNET" "\$DEV_IP" --wan-ip "\$WAN" >/dev/null 2>&1 || true
 
+CONFIG=\$(start-tunnel device show-config "\$SUBNET" "\$DEV_IP" 2>/dev/null) || true
+[ -n "\$CONFIG" ] || die "Could not generate the configuration. Try again, or check 'systemctl status start-tunneld.service'."
+
 echo ""
 echo "==================== COPY EVERYTHING BELOW ===================="
-start-tunnel device show-config "\$SUBNET" "\$DEV_IP"
+printf '%s\\n' "\$CONFIG"
 echo "==================== COPY EVERYTHING ABOVE ===================="
 echo ""
 echo "Paste that into HashGG to get your next command."
+${SETUP_DELIMITER}
+bash /tmp/hashgg-starttunnel.sh
 `;
 }
 
