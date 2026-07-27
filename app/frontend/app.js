@@ -129,6 +129,7 @@ const els = {
   btcCopySosFeedback: document.getElementById('btc-copy-sos-feedback'),
   btcDoneEndpoint: document.getElementById('btc-done-endpoint'),
   btcDoneAgent: document.getElementById('btc-done-agent'),
+  btcDoneExplain: document.getElementById('btc-done-explain'),
   btcCleanupWarn: document.getElementById('btc-cleanup-warn'),
   btcIntroReplace: document.getElementById('btc-intro-replace'),
   btcReplaceSsh: document.getElementById('btc-replace-ssh'),
@@ -1317,6 +1318,13 @@ async function btcVerify() {
         `Reachable — ${shortAgent(r.user_agent)} answered`, 'ok');
       if (r.warning) setBtcStatus(els.btcVerifyStatus, r.warning, 'err');
       els.btcFirewallHelp.style.display = 'none';
+      if (!r.warning && currentScreen === 'btc-u-check') {
+        lastBtcSig = null;
+        await refreshBtcStatus();
+        btcShowDone(`${(btcState && btcState.public_endpoint) || ''}`, r.user_agent,
+                    new Date().toISOString(), false);
+        return;
+      }
     } else {
       setBtcStatus(els.btcVerifyStatus, verifyHint(r.error), 'err');
       els.btcFirewallHelp.style.display = 'block';
@@ -1502,6 +1510,12 @@ function btcWizShowResult() {
 }
 
 function btcShowDone(endpoint, agent, checkedAt, justFinished) {
+  const guided = btcState && btcState.capability === 'guided';
+  els.btcDoneExplain.innerHTML = '<strong>Nothing else to do — this is on and working.</strong> '
+    + (guided
+        ? 'StartOS opened the port and told your node to advertise it. '
+        : 'Your node is telling the rest of the network where to find it. ')
+    + 'Other nodes will start connecting on their own, usually within a few hours.';
   els.btcDoneEndpoint.textContent = endpoint || '—';
   const who = agent ? `${shortAgent(agent)} answered from the internet` : 'Your node answered from the internet';
   els.btcDoneAgent.textContent = checkedAt ? `${who}, checked ${relAge(checkedAt)}.` : `${who}.`;
@@ -1764,7 +1778,8 @@ els.btnBtcURetry.addEventListener('click', btcUConnect);
 
 els.btnBtcWizLaunch.addEventListener('click', btcWizLaunch);
 els.btnBtcWizResult.addEventListener('click', btcWizShowResult);
-els.btnBtcWizAgain.addEventListener('click', () => btcWizGo('btc-intro'));
+els.btnBtcWizAgain.addEventListener('click', () =>
+  btcWizGo(btcState && btcState.capability === 'guided' ? 'btc-intro' : 'btc-u-intro'));
 els.btnBtcRecheck.addEventListener('click', btcRecheck);
 els.btnBtcWizStart.addEventListener('click', () =>
   btcWizGo(btcState && btcState.vps_host ? 'btc-replace' : 'btc-vps'));
