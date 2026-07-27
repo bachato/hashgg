@@ -317,9 +317,33 @@
           <div id="btc-startos" style="display:none;">
             <ol class="btc-steps">
               <li>
+                <div class="btc-step-head"><strong>Log in to your new VPS</strong></div>
+                <p class="hint">On BTCVPS, once the payment confirms, open <strong>Servers</strong>
+                and click <strong>Manage</strong> next to your new server. That page shows its
+                <strong>IP address</strong> and <strong>root password</strong>.</p>
+                <div class="advanced-grid">
+                  <div class="form-group">
+                    <label class="form-label" for="btc-vps-ip">Your VPS IP address</label>
+                    <input type="text" id="btc-vps-ip" class="form-input" placeholder="e.g. 203.0.113.9" autocomplete="off" spellcheck="false">
+                  </div>
+                </div>
+                <p class="hint">Open a terminal — <strong>Command Prompt</strong> on Windows,
+                <strong>Terminal</strong> on macOS or Linux — and run this:</p>
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                  <div class="code-hint" id="btc-ssh-cmd" style="flex:1;margin:0;">ssh root@…</div>
+                  <button id="btn-btc-copy-ssh" class="btn btn-secondary btn-sm">Copy</button>
+                  <span id="btc-copy-ssh-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+                </div>
+                <p class="hint">The first time, it asks whether you trust the server — type
+                <code>yes</code>. Then it asks for the root password from the Manage page.
+                <strong>Nothing appears as you type or paste the password</strong> — that is
+                normal, just press Enter.</p>
+              </li>
+
+              <li>
                 <div class="btc-step-head"><strong>Paste this into your new VPS</strong></div>
-                <p class="hint">As root, on a fresh Debian 12-or-newer VPS with a dedicated
-                public IPv4. It checks the machine first and stops if anything is wrong.</p>
+                <p class="hint">Paste the whole thing into that same terminal and press Enter.
+                It checks the machine over first and stops if anything is wrong.</p>
                 <pre id="btc-block-a" class="script-pre">Loading…</pre>
                 <div class="actions">
                   <button id="btn-btc-copy-a" class="btn btn-secondary btn-sm">Copy</button>

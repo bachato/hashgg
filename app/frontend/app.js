@@ -88,6 +88,10 @@ const els = {
   btcCleanupNote: document.getElementById('btc-cleanup-note'),
   // StartOS 0.4.0 guided flow
   btcStartos: document.getElementById('btc-startos'),
+  btcVpsIp: document.getElementById('btc-vps-ip'),
+  btcSshCmd: document.getElementById('btc-ssh-cmd'),
+  btnBtcCopySsh: document.getElementById('btn-btc-copy-ssh'),
+  btcCopySshFeedback: document.getElementById('btc-copy-ssh-feedback'),
   btcBlockA: document.getElementById('btc-block-a'),
   btnBtcCopyA: document.getElementById('btn-btc-copy-a'),
   btcCopyAFeedback: document.getElementById('btc-copy-a-feedback'),
@@ -1416,6 +1420,18 @@ async function startosVerify() {
     setBtcStatus(els.btcStartosVerifyStatus, err.message, 'err');
   }
 }
+
+// The address is only ever used to build the login command shown here — HashGG
+// never connects to this VPS itself on the StartOS path, it only generates.
+// Same idea as the stratum wizard: take the address once, hand back something
+// that can be copied rather than typed.
+function updateBtcSshCmd() {
+  const ip = els.btcVpsIp.value.trim();
+  els.btcSshCmd.textContent = ip ? `ssh root@${ip}` : 'ssh root@…';
+}
+els.btcVpsIp.addEventListener('input', updateBtcSshCmd);
+els.btnBtcCopySsh.addEventListener('click', () =>
+  copyText(els.btcSshCmd.textContent, els.btcCopySshFeedback, els.btnBtcCopySsh));
 
 els.btnBtcMakeB.addEventListener('click', makeBlockB);
 els.btnBtcStartosVerify.addEventListener('click', startosVerify);
