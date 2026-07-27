@@ -1593,7 +1593,7 @@ function btcIpProblem(raw) {
 els.btcVpsIp.addEventListener('input', () => {
   updateBtcSshCmd();
   setBtcStatus(els.btcIpStatus, '', '');
-  els.btcLoginRest.style.display = btcIpProblem(els.btcVpsIp.value) ? 'none' : 'block';
+
 });
 
 // --- HashGG runs the VPS setup itself ---
@@ -1678,7 +1678,7 @@ function btcUUpdateSsh() {
 els.btcVpsHost.addEventListener('input', () => {
   btcUUpdateSsh();
   setBtcStatus(els.btcUIpStatus, '', '');
-  els.btcULoginRest.style.display = btcIpProblem(els.btcVpsHost.value) ? 'none' : 'block';
+
 });
 
 els.btnBtcUCopySsh.addEventListener('click', () =>
