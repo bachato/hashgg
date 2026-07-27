@@ -99,6 +99,8 @@ const els = {
   // StartOS 0.4.0 guided flow
   btcStartos: document.getElementById('btc-startos'),
   btnBtcWizLaunch: document.getElementById('btn-btc-wiz-launch'),
+  btnBtcWizResult: document.getElementById('btn-btc-wiz-result'),
+  btnBtcWizAgain: document.getElementById('btn-btc-wiz-again'),
   btnBtcWizStart: document.getElementById('btn-btc-wiz-start'),
   btnBtcWizToLogin: document.getElementById('btn-btc-wiz-to-login'),
   btnBtcWizToPaste: document.getElementById('btn-btc-wiz-to-paste'),
@@ -211,7 +213,19 @@ const els = {
 };
 
 // Screen management
+// True only while deliberately leaving the Bitcoin wizard — see the guard below.
+let btcWizLeaving = false;
+
 function showScreen(name) {
+  // The status poll routes screens every few seconds, and it does not know the
+  // Bitcoin wizard exists — so it would drag the user back to the dashboard
+  // mid-setup, which is exactly what it did. Ignore routing OUT of the wizard
+  // unless the wizard itself asked for it.
+  if (!btcWizLeaving
+      && String(currentScreen).startsWith('btc-')
+      && !String(name).startsWith('btc-')) {
+    return;
+  }
   Object.values(screens).forEach(s => { if (s) s.style.display = 'none'; });
   if (screens[name]) {
     screens[name].style.display = 'block';
@@ -1140,7 +1154,11 @@ function renderBtcGuidance(d) {
 
   els.btcStartos.style.display = (d.capability === 'guided') ? 'block' : 'none';
   if (d.capability === 'guided') {
-    loadBlockA();
+    // One button per state rather than one that guesses. "Set this up" opening
+    // a page that says it is already set up is how it read before.
+    const done = !!d.verified_endpoint;
+    els.btnBtcWizLaunch.style.display = done ? 'none' : 'inline-block';
+    els.btnBtcWizResult.style.display = done ? 'inline-block' : 'none';
     els.btcGuidance.innerHTML = `
       <p><strong>StartOS can do this itself, and does it better than HashGG could.</strong>
       It keeps each peer's real address, and sets up your node for you.</p>
@@ -1408,14 +1426,23 @@ els.btnBtcCopySetup.addEventListener('click', () =>
 
 let btcWizReturn = 'dashboard';
 
-function btcWizGo(name) { showScreen(name); window.scrollTo(0, 0); }
+function btcWizGo(name) {
+  btcWizLeaving = !String(name).startsWith('btc-');
+  showScreen(name);
+  btcWizLeaving = false;
+  window.scrollTo(0, 0);
+}
 
 function btcWizLaunch() {
   btcWizReturn = currentScreen || 'dashboard';
-  // Already finished? Go straight to the result rather than making someone walk
-  // the whole thing again to see it.
-  if (btcState && btcState.verified_endpoint) { btcShowDone(btcState.verified_endpoint, btcState.verified_agent); return; }
   btcWizGo('btc-intro');
+}
+
+// Reached from the dashboard when this is already working — a different button
+// with a different label, rather than one button that guesses.
+function btcWizShowResult() {
+  btcWizReturn = currentScreen || 'dashboard';
+  btcShowDone(btcState && btcState.verified_endpoint, btcState && btcState.verified_agent);
 }
 
 function btcShowDone(endpoint, agent) {
@@ -1581,6 +1608,8 @@ async function btcStartosCleanup() {
 // --- navigation ---
 
 els.btnBtcWizLaunch.addEventListener('click', btcWizLaunch);
+els.btnBtcWizResult.addEventListener('click', btcWizShowResult);
+els.btnBtcWizAgain.addEventListener('click', () => btcWizGo('btc-intro'));
 els.btnBtcWizStart.addEventListener('click', () => btcWizGo('btc-vps'));
 els.btnBtcWizToLogin.addEventListener('click', () => btcWizGo('btc-login'));
 els.btnBtcWizToPaste.addEventListener('click', () => {
