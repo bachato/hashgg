@@ -552,6 +552,7 @@ details summary:hover { color: var(--text); }
 
 /* ─── Hint box ───────────────────────────────────────────────── */
 .hint-box {
+  margin: 1.25rem 0;
   background: rgba(88, 166, 255, 0.08);
   border: 1px solid rgba(88, 166, 255, 0.3);
   border-radius: 6px;
