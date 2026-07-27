@@ -470,6 +470,39 @@ datum_api_port() {
   [ -n "$p" ] && printf '%s' "$p" || printf '%s' "$DATUM_API_PORT_DEFAULT"
 }
 
+# Datum's api_listen_port defaults to 0, and 0 means "API disabled" — it logs
+# "No API port configured. API disabled." and never opens the port
+# (src/datum_api.c). Configs written before this was noticed have no
+# api.listen_port at all, so the dashboard URL this script prints at the end
+# went nowhere. Fill it in. An explicit 0 is someone turning the API off on
+# purpose and is left alone; DATUM_API_ENABLED then keeps us from publishing
+# and advertising a port nothing is behind.
+DATUM_API_ENABLED=1
+
+ensure_datum_api_port() {
+  local p; p="$(json_raw "$USER_DATUM_CONF" '.api.listen_port')"
+
+  if [ "$p" = "0" ]; then
+    DATUM_API_ENABLED=0
+    warn "Datum's dashboard is off (api.listen_port is 0 in $USER_DATUM_CONF)."
+    info "Set it to $DATUM_API_PORT_DEFAULT and re-run if you want the dashboard back."
+    return 0
+  fi
+
+  case "$p" in
+    ''|null) ;;
+    *) return 0 ;;
+  esac
+
+  local tmp="$USER_DATUM_CONF.tmp.$$"
+  jq --argjson p "$DATUM_API_PORT_DEFAULT" \
+     '(.api //= {}) | .api.listen_port = $p' "$USER_DATUM_CONF" >"$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$USER_DATUM_CONF"
+  DATUM_CONF_CHANGED=1
+  ok "Datum config: added api.listen_port=$DATUM_API_PORT_DEFAULT (its dashboard was disabled)"
+}
+
 # Datum's own dashboard is where the payout address, coinbase tags and
 # pool/solo choice actually live. Its settings form is read-only unless BOTH an
 # admin_password is set AND modify_conf is true — miss either and Save is
@@ -600,10 +633,12 @@ write_container_datum_conf() {
   jq \
     --arg url "http://host.docker.internal:$BITCOIN_RPC_PORT" \
     --arg cookie "$new_cookie" \
+    --argjson aport "$aport" \
     '
     .bitcoind.rpcurl = $url
     | .stratum.listen_addr = "0.0.0.0"
     | .api.listen_addr = "0.0.0.0"
+    | .api.listen_port = $aport
     | if $cookie != "" then .bitcoind.rpccookiefile = $cookie else . end
     ' "$USER_DATUM_CONF" >"$DATUM_CONTAINER_CONF"
   # 0600 because this file carries RPC credentials. The Datum image runs as an
@@ -674,13 +709,24 @@ write_compose() {
       say "    restart: unless-stopped"
       say "    ports:"
       say "      - \"$sport:$sport\""
-      say "      # API on loopback so bitcoin.conf's blocknotify can reach it."
-      say "      - \"127.0.0.1:$aport:$aport\""
+      if [ "$DATUM_API_ENABLED" = "1" ]; then
+        say "      # API on loopback so bitcoin.conf's blocknotify can reach it."
+        say "      - \"127.0.0.1:$aport:$aport\""
+      fi
       say "    volumes:"
       say "      - \"$DATUM_CONTAINER_CONF:/app/config/config.json:ro\""
       say "      - \"$BITCOIN_DATADIR:/bitcoin:ro\""
       say "    extra_hosts:"
       say "      - \"host.docker.internal:host-gateway\""
+      # The upstream image's HEALTHCHECK hardcodes Datum's own default stratum
+      # port (23334). Ours is configurable and defaults to 23335, so that check
+      # can only ever fail — the container sits "unhealthy" while working fine.
+      say "    healthcheck:"
+      say "      test: [\"CMD-SHELL\", \"nc -z localhost $sport || exit 1\"]"
+      say "      interval: 30s"
+      say "      timeout: 5s"
+      say "      start_period: 15s"
+      say "      retries: 3"
       say ""
     fi
 
@@ -846,6 +892,7 @@ cmd_up() {
   if [ "$DATUM_MODE" = "native" ]; then
     ensure_datum_installed_native
     ensure_datum_configured
+    ensure_datum_api_port
     ensure_datum_admin
     # A config change only takes effect on start, so bounce an already-running
     # Datum rather than silently leaving the old settings live.
@@ -854,6 +901,7 @@ cmd_up() {
   else
     ensure_datum_installed_docker
     ensure_datum_configured
+    ensure_datum_api_port
     ensure_datum_admin
     check_macos_rpc_reachability
     write_container_datum_conf
@@ -870,9 +918,11 @@ cmd_up() {
   say ""
   step "Done"
   say ""
-  say "  Datum Gateway     http://127.0.0.1:$aport"
-  say "                    payout address, coinbase tags, pool or solo"
-  say ""
+  if [ "$DATUM_API_ENABLED" = "1" ]; then
+    say "  Datum Gateway     http://127.0.0.1:$aport"
+    say "                    payout address, coinbase tags, pool or solo"
+    say ""
+  fi
   say "  HashGG            http://localhost:$HASHGG_UI_PORT"
   say "                    tunnel setup and your public mining endpoint"
   say ""
@@ -880,7 +930,7 @@ cmd_up() {
   say "                    for miners on this machine or your LAN"
   say ""
 
-  if [ -n "$(json_get "$USER_DATUM_CONF" '.api.admin_password')" ]; then
+  if [ "$DATUM_API_ENABLED" = "1" ] && [ -n "$(json_get "$USER_DATUM_CONF" '.api.admin_password')" ]; then
     say "  Sign in first     http://127.0.0.1:$aport/clients"
     if [ -n "$DATUM_ADMIN_PASSWORD_NEW" ]; then
       say "                    admin / $DATUM_ADMIN_PASSWORD_NEW"

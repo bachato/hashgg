@@ -66,6 +66,10 @@ DATUM_GROUP="${DATUM_GROUP:-datum}"
 # Prompt defaults
 DEFAULT_STRATUM_PORT=23335
 DEFAULT_STRATUM_ADDR="0.0.0.0"
+# Datum's api_listen_port defaults to 0, and 0 means "API disabled" — no
+# dashboard at all (src/datum_api.c). Writing it explicitly is what makes the
+# dashboard exist, so this is not a cosmetic default.
+DEFAULT_API_PORT=7152
 DEFAULT_BITCOIN_CONF_CANDIDATES=(
   "$HOME/.bitcoin/bitcoin.conf"
   # macOS default (bitcoin-qt on a Mac).
@@ -214,6 +218,7 @@ load_existing_config_defaults() {
   EX_RPC_COOKIE=$(jq -r '.bitcoind.rpccookiefile // ""' "$f" 2>/dev/null || true)
   EX_STRATUM_ADDR=$(jq -r '.stratum.listen_addr // ""' "$f" 2>/dev/null || true)
   EX_STRATUM_PORT=$(jq -r '.stratum.listen_port // ""' "$f" 2>/dev/null || true)
+  EX_API_PORT=$(jq -r '.api.listen_port // ""' "$f" 2>/dev/null || true)
   EX_PAYOUT=$(jq -r '.mining.pool_address // ""' "$f" 2>/dev/null || true)
   EX_CB_PRIMARY=$(jq -r '.mining.coinbase_tag_primary // ""' "$f" 2>/dev/null || true)
   EX_CB_SECONDARY=$(jq -r '.mining.coinbase_tag_secondary // ""' "$f" 2>/dev/null || true)
@@ -307,11 +312,15 @@ action_check_knots() {
       warn "  rpcbind is not loopback. Datum runs on the same host, so loopback is safer — anything else exposes the RPC beyond this machine."
     fi
   else
-    warn "  rpcbind= (missing — Knots' default is loopback, but explicit is better)"
-    missing+=("rpcbind=127.0.0.1")
+    # Deliberately not offered as a fix. Knots already binds loopback by default,
+    # and it ignores rpcbind unless rpcallowip is set too — so suggesting a bare
+    # rpcbind= line changes nothing except adding a scary warning at startup.
+    info "  rpcbind= (missing — Knots' default is loopback, which is what Datum needs)"
   fi
   if [[ -n "$v_rpcallowip" ]]; then
     ok "  rpcallowip=$v_rpcallowip"
+  elif [[ -n "$v_rpcbind" ]]; then
+    warn "  rpcallowip= (missing — Knots ignores rpcbind without it and binds loopback only)"
   else
     info "  rpcallowip= (missing — default covers loopback, so usually fine)"
   fi
@@ -566,6 +575,12 @@ action_configure() {
   [[ "$stratum_port" =~ ^[0-9]+$ ]] || die "Port must be numeric."
   (( stratum_port >= 1 && stratum_port <= 65535 )) || die "Port out of range."
 
+  # Not asked for — one more port question buys nothing when the only consumer
+  # (start-hashgg.sh) reads whatever ends up here. An existing value is kept so
+  # a re-run never moves someone's dashboard out from under them.
+  local api_port="${EX_API_PORT:-$DEFAULT_API_PORT}"
+  [[ "$api_port" =~ ^[0-9]+$ ]] || api_port="$DEFAULT_API_PORT"
+
   # Payout
   say ""
   say "Datum submits blocks to OCEAN for non-custodial payout."
@@ -655,6 +670,7 @@ action_configure() {
     --arg cookie "$rpc_cookie" \
     --arg saddr "$stratum_addr" \
     --argjson sport "$stratum_port" \
+    --argjson aport "$api_port" \
     --arg payout "$payout" \
     --arg cbprimary "$cb_primary" \
     --arg cbsecondary "$cb_secondary" '
@@ -676,7 +692,12 @@ action_configure() {
       # reachable to HashGG-in-Docker (via extra_hosts host-gateway) and
       # to curl on the host, and nothing else.
       (.api //= {}) |
-      (.api.listen_addr = "127.0.0.1")
+      (.api.listen_addr = "127.0.0.1") |
+      # Without an explicit port the API never starts: the upstream default is
+      # 0, and Datum reads 0 as "disabled", so the dashboard we point people at
+      # first would refuse connections. (No apostrophes in here — this comment
+      # lives inside a single-quoted shell string.)
+      (.api.listen_port = $aport)
     ')"
 
   mkdir -p "$USER_CONF_DIR"
