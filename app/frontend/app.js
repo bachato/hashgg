@@ -66,6 +66,8 @@ const els = {
   btcUShareHost: document.getElementById('btc-u-share-host'),
   btnBtcUToLogin: document.getElementById('btn-btc-u-to-login'),
   btcUIpStatus: document.getElementById('btc-u-ip-status'),
+  btcULoginIntro: document.getElementById('btc-u-login-intro'),
+  btcUIpGroup: document.getElementById('btc-u-ip-group'),
   btcULoginRest: document.getElementById('btc-u-login-rest'),
   btcUSshCmd: document.getElementById('btc-u-ssh-cmd'),
   btnBtcUCopySsh: document.getElementById('btn-btc-u-copy-ssh'),
@@ -1442,6 +1444,24 @@ function btcWizGo(name) {
     els.btcUShare.style.display = share ? 'block' : 'none';
     if (share) els.btcUShareHost.textContent = share;
   }
+  if (name === 'btc-u-login') {
+    // Already know the address — because they chose the server that carries
+    // mining, or came back to a half-finished setup. Asking again would be
+    // asking a question we have the answer to.
+    const known = btcState && btcState.vps_host;
+    if (known) {
+      els.btcVpsHost.value = known;
+      btcUUpdateSsh();
+      els.btcUIpGroup.style.display = 'none';
+      els.btcULoginIntro.innerHTML = 'This is the server already carrying your mining tunnel, at '
+        + `<code>${known}</code>. You will need its <strong>root password</strong> — the one you `
+        + 'used when you first set it up.';
+    } else {
+      els.btcUIpGroup.style.display = 'block';
+      els.btcULoginIntro.innerHTML = 'You need two things from the <strong>Manage</strong> page on '
+        + "BTCVPS: the server's <strong>IP address</strong> and its <strong>root password</strong>.";
+    }
+  }
   if (name === 'btc-u-script') loadBtcSetupScript();
   if (name === 'btc-startos') fillStartosSshCmd(els.btcStartosSsh, els.btcStartosSshNote);
   if (name === 'btc-replace') {
@@ -1687,6 +1707,8 @@ els.btnBtcUStart.addEventListener('click', () => btcWizGo('btc-u-vps'));
 els.btnBtcUToLogin.addEventListener('click', () => btcWizGo('btc-u-login'));
 
 els.btnBtcUToScript.addEventListener('click', async () => {
+  // Already recorded, so there is nothing to save and nothing to validate.
+  if (btcState && btcState.vps_host) { btcWizGo('btc-u-script'); return; }
   const problem = btcIpProblem(els.btcVpsHost.value);
   if (problem) { setBtcStatus(els.btcUIpStatus, problem, 'err'); return; }
   setBtcStatus(els.btcUIpStatus, 'Saving…', '');
