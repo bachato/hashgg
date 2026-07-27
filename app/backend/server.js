@@ -16,6 +16,8 @@ const bitcoinP2p = require('./bitcoin-p2p');
 const btcP2pManager = require('./btc-p2p-manager');
 const bitcoinRpc = require('./bitcoin-rpc');
 const startosBlocks = require('./startos-blocks');
+const startunnelPayload = require('./starttunnel-payload');
+const starttunnelRemote = require('./starttunnel-remote');
 
 const PORT = 3000;
 const FRONTEND_DIR = '/usr/local/lib/hashgg/frontend';
@@ -566,9 +568,72 @@ async function handleApi(req, res) {
   // HashGG generates; the user pastes. It never touches either machine, which
   // keeps the privilege story the same as the stratum onboarding.
 
-  // GET /api/btc/startos/block-a — the VPS script
+  // GET /api/btc/startos/block-a — the block that gives HashGG a way in
   if (pathname === '/api/btc/startos/block-a' && req.method === 'GET') {
-    sendJson(res, 200, { script: startosBlocks.buildBlockA() });
+    let s = state.get();
+    if (!s.vps_ssh_public_key || !s.vps_ssh_private_key) {
+      const kp = sshKeygenHelper.generateKeyPair();
+      state.update({ vps_ssh_private_key: kp.privateKeyPem, vps_ssh_public_key: kp.publicKeyOpenSSH });
+      s = state.get();
+    }
+    try {
+      sendJson(res, 200, { script: startunnelPayload.buildBlockA(s.vps_ssh_public_key) });
+    } catch (err) {
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  // POST /api/btc/startos/setup — HashGG runs the setup on the VPS itself
+  if (pathname === '/api/btc/startos/setup' && req.method === 'POST') {
+    if (rateLimited('btc-setup', 6)) {
+      sendJson(res, 429, { error: 'Too many attempts — wait a moment.' });
+      return;
+    }
+    const body = await parseBody(req);
+    const host = (body.host || '').toString().trim();
+    if (!isValidHost(host)) {
+      sendJson(res, 400, { error: 'Please enter a valid VPS address' });
+      return;
+    }
+    let s = state.get();
+    if (!s.vps_ssh_private_key) {
+      const kp = sshKeygenHelper.generateKeyPair();
+      state.update({ vps_ssh_private_key: kp.privateKeyPem, vps_ssh_public_key: kp.publicKeyOpenSSH });
+      s = state.get();
+    }
+    // Remember it now: cleanup and verification both need it, and the user
+    // should not have to type it twice if they come back later.
+    state.update({ btc_p2p_vps_host: host, btc_p2p_vps_source: 'startos' });
+    const r = starttunnelRemote.start(host, s.vps_ssh_private_key);
+    sendJson(res, r.ok ? 200 : 409, r);
+    return;
+  }
+
+  // GET /api/btc/startos/setup-status — progress for the run above
+  if (pathname === '/api/btc/startos/setup-status' && req.method === 'GET') {
+    const st = starttunnelRemote.state();
+    let script = null;
+    if (st.state === 'done' && st.config) {
+      const v = startosBlocks.validateWireGuardConfig(st.config);
+      if (v.ok && (!v.vpsHost || isValidHost(v.vpsHost))) {
+        script = startosBlocks.buildBlockB(v.config, v.vpsHost || st.host);
+      }
+    }
+    sendJson(res, 200, { ...st, config: undefined, script });
+    return;
+  }
+
+  // POST /api/btc/startos/cleanup — take HashGG's access back off the VPS
+  if (pathname === '/api/btc/startos/cleanup' && req.method === 'POST') {
+    const s = state.get();
+    if (!s.btc_p2p_vps_host || !s.vps_ssh_private_key) {
+      sendJson(res, 400, { error: 'Nothing to clean up.' });
+      return;
+    }
+    const r = await starttunnelRemote.cleanup(s.btc_p2p_vps_host, s.vps_ssh_private_key);
+    if (r.ok) starttunnelRemote.reset();
+    sendJson(res, 200, r);
     return;
   }
 

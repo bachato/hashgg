@@ -358,30 +358,41 @@
                   <button id="btn-btc-copy-a" class="btn btn-secondary btn-sm">Copy</button>
                   <span id="btc-copy-a-feedback" class="copy-feedback" style="display:none;">Copied!</span>
                 </div>
-                <p class="hint">It finishes by printing a block of configuration between two
-                <code>COPY</code> lines — that is what the next step needs.</p>
+                <p class="hint">It finishes with <strong>Done</strong> in a few seconds. That is
+                all you have to do on the VPS — come back here for the rest.</p>
                 <details class="btc-sub">
                   <summary>It stopped with a message instead</summary>
-                  <p class="hint">Then it did not finish, and there is nothing to paste into the
-                  next step yet. Any message beginning <code>!!</code> says what to do — follow
-                  that first. Nothing is left half-configured, so it is always safe to start
-                  again with:</p>
-                  <div class="code-hint">bash /root/hashgg-starttunnel.sh</div>
+                  <p class="hint">Any message beginning <code>!!</code> says what to do. Nothing
+                  is left half-configured, so it is always safe to run it again with:</p>
+                  <div class="code-hint">bash /root/hashgg-bootstrap.sh</div>
                   <p class="hint">If your connection closed on its own, wait a minute, run the
                   <code>ssh</code> command from the previous step again, then that one.</p>
                 </details>
               </li>
 
               <li id="btc-step-config" style="display:none;">
-                <div class="btc-step-head"><strong>Paste back what it printed</strong></div>
-                <p class="hint">Everything between the COPY lines — the WireGuard configuration.</p>
-                <textarea id="btc-wg-config" class="form-input btc-textarea" rows="10"
-                  placeholder="[Interface]&#10;Address = ...&#10;PrivateKey = ...&#10;&#10;[Peer]&#10;..."
-                  spellcheck="false"></textarea>
+                <div class="btc-step-head"><strong>Let HashGG set up the VPS</strong></div>
+                <p class="hint">This installs and configures StartTunnel on your VPS. It takes a
+                minute or two — you can leave this page open and watch.</p>
                 <div class="actions">
-                  <button id="btn-btc-make-b" class="btn btn-primary btn-sm">Continue</button>
-                  <span id="btc-b-status" class="test-status"></span>
+                  <button id="btn-btc-run-setup" class="btn btn-primary btn-sm">Set up my VPS</button>
+                  <span id="btc-setup-status" class="test-status"></span>
                 </div>
+                <pre id="btc-setup-log" class="script-pre" style="display:none;max-height:9rem;"></pre>
+
+                <details class="btc-sub" id="btc-manual-fallback">
+                  <summary>Do it myself instead</summary>
+                  <p class="hint">If the automatic setup will not complete, run
+                  <code>sudo /usr/local/sbin/hashgg-starttunnel-setup setup</code> on the VPS and
+                  paste everything between the two <code>HASHGG_CONFIG</code> lines here.</p>
+                  <textarea id="btc-wg-config" class="form-input btc-textarea" rows="8"
+                    placeholder="[Interface]&#10;Address = ...&#10;PrivateKey = ...&#10;&#10;[Peer]&#10;..."
+                    spellcheck="false"></textarea>
+                  <div class="actions">
+                    <button id="btn-btc-make-b" class="btn btn-secondary btn-sm">Continue</button>
+                    <span id="btc-b-status" class="test-status"></span>
+                  </div>
+                </details>
               </li>
 
               <li id="btc-step-b" style="display:none;">
@@ -404,6 +415,12 @@
                   <button id="btn-btc-startos-verify" class="btn btn-primary btn-sm">Verify</button>
                 </div>
                 <p id="btc-startos-verify-status" class="test-status"></p>
+                <div id="btc-cleanup-row" class="actions" style="display:none;">
+                  <button id="btn-btc-startos-cleanup" class="btn btn-secondary btn-sm">Remove HashGG's access to the VPS</button>
+                  <span id="btc-cleanup-status" class="test-status"></span>
+                </div>
+                <p class="hint">HashGG keeps a way in to your VPS only for this setup. Once it is
+                working you can take that away — the tunnel keeps running without it.</p>
               </li>
             </ol>
           </div>

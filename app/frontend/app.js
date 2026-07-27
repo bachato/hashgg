@@ -97,6 +97,12 @@ const els = {
   btcSshBlock: document.getElementById('btc-ssh-block'),
   btcStepA: document.getElementById('btc-step-a'),
   btcStepConfig: document.getElementById('btc-step-config'),
+  btnBtcRunSetup: document.getElementById('btn-btc-run-setup'),
+  btcSetupStatus: document.getElementById('btc-setup-status'),
+  btcSetupLog: document.getElementById('btc-setup-log'),
+  btcCleanupRow: document.getElementById('btc-cleanup-row'),
+  btnBtcStartosCleanup: document.getElementById('btn-btc-startos-cleanup'),
+  btcCleanupStatus: document.getElementById('btc-cleanup-status'),
   btcBlockA: document.getElementById('btc-block-a'),
   btnBtcCopyA: document.getElementById('btn-btc-copy-a'),
   btcCopyAFeedback: document.getElementById('btc-copy-a-feedback'),
@@ -1481,6 +1487,78 @@ els.btcVpsIp.addEventListener('keydown', (e) => { if (e.key === 'Enter') btcIpCo
 els.btnBtcIpContinue.addEventListener('click', btcIpContinue);
 els.btnBtcCopySsh.addEventListener('click', () =>
   copyText(els.btcSshCmd.textContent, els.btcCopySshFeedback, els.btnBtcCopySsh));
+
+// --- HashGG runs the VPS setup itself ---------------------------------------
+//
+// The slow, failure-prone half of this flow now belongs to software. A first
+// install pulls packages over a new VPS's network, which takes minutes and
+// fails in ways that want a retry rather than a paragraph of instructions —
+// and the people this feature exists for should not have to read shell output
+// to find out what went wrong.
+
+let btcSetupPoll = null;
+
+async function pollBtcSetup() {
+  try {
+    const r = await api('GET', '/btc/startos/setup-status');
+    if (r.lines && r.lines.length) {
+      els.btcSetupLog.style.display = 'block';
+      els.btcSetupLog.textContent = r.lines.join('\n');
+    }
+    if (r.state === 'running') return;
+
+    clearInterval(btcSetupPoll); btcSetupPoll = null;
+    els.btnBtcRunSetup.disabled = false;
+
+    if (r.state === 'done' && r.script) {
+      setBtcStatus(els.btcSetupStatus, 'Your VPS is ready', 'ok');
+      els.btcBlockB.textContent = r.script;
+      els.btcStepB.style.display = 'list-item';
+      els.btcStepVerify.style.display = 'list-item';
+      els.btcCleanupRow.style.display = 'flex';
+    } else {
+      setBtcStatus(els.btcSetupStatus, r.error || 'The setup did not finish.', 'err');
+    }
+  } catch (err) {
+    clearInterval(btcSetupPoll); btcSetupPoll = null;
+    els.btnBtcRunSetup.disabled = false;
+    setBtcStatus(els.btcSetupStatus, err.message, 'err');
+  }
+}
+
+async function btcRunSetup() {
+  const host = els.btcVpsIp.value.trim();
+  if (btcIpProblem(host)) { setBtcStatus(els.btcSetupStatus, btcIpProblem(host), 'err'); return; }
+  els.btnBtcRunSetup.disabled = true;
+  els.btcSetupLog.style.display = 'none';
+  els.btcSetupLog.textContent = '';
+  setBtcStatus(els.btcSetupStatus, 'Working…', '');
+  try {
+    await api('POST', '/btc/startos/setup', { host });
+    if (btcSetupPoll) clearInterval(btcSetupPoll);
+    btcSetupPoll = setInterval(pollBtcSetup, 1500);
+    pollBtcSetup();
+  } catch (err) {
+    els.btnBtcRunSetup.disabled = false;
+    setBtcStatus(els.btcSetupStatus, err.message, 'err');
+  }
+}
+
+async function btcStartosCleanup() {
+  setBtcStatus(els.btcCleanupStatus, 'Removing…', '');
+  try {
+    const r = await api('POST', '/btc/startos/cleanup', {});
+    setBtcStatus(els.btcCleanupStatus,
+      r.ok ? 'Removed — HashGG can no longer reach that VPS'
+           : (r.error || 'Could not remove it; you can delete the hashgg-setup user yourself.'),
+      r.ok ? 'ok' : 'err');
+  } catch (err) {
+    setBtcStatus(els.btcCleanupStatus, err.message, 'err');
+  }
+}
+
+els.btnBtcRunSetup.addEventListener('click', btcRunSetup);
+els.btnBtcStartosCleanup.addEventListener('click', btcStartosCleanup);
 
 els.btnBtcMakeB.addEventListener('click', makeBlockB);
 els.btnBtcStartosVerify.addEventListener('click', startosVerify);
