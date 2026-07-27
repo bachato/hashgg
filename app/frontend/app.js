@@ -115,6 +115,7 @@ const els = {
   btcDoneEndpoint: document.getElementById('btc-done-endpoint'),
   btcDoneAgent: document.getElementById('btc-done-agent'),
   btcCleanupWarn: document.getElementById('btc-cleanup-warn'),
+  btcIntroReplace: document.getElementById('btc-intro-replace'),
   btnBtcRecheck: document.getElementById('btn-btc-recheck'),
   btcRecheckStatus: document.getElementById('btc-recheck-status'),
   btcVpsIp: document.getElementById('btc-vps-ip'),
@@ -1464,6 +1465,12 @@ function fillStartosSshCmd() {
 
 function btcWizGo(name) {
   if (name === 'btc-startos') fillStartosSshCmd();
+  // Arriving at the intro with a VPS already recorded means this is a move, not
+  // a first run, and the old gateway has to go first.
+  if (name === 'btc-intro') {
+    els.btcIntroReplace.style.display =
+      (btcState && btcState.vps_host) ? 'block' : 'none';
+  }
   btcWizLeaving = !String(name).startsWith('btc-');
   showScreen(name);
   btcWizLeaving = false;

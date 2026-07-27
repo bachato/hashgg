@@ -450,6 +450,17 @@
         nodes that connect to you. This route hides it. Neither is wrong.</p>
       </div>
 
+      <div id="btc-intro-replace" class="warn-box" style="display:none;">
+        <p><strong>You already have this set up on another VPS.</strong> Remove that one from
+        StartOS <em>first</em> — leaving it connected to a VPS you stop using will break name
+        lookups on this server, which stops your mining as well.</p>
+        <p>In a terminal on StartOS, run this, then check that <code>wg0</code> is gone from
+        <strong>System → Gateways</strong> before continuing:</p>
+        <div class="code-hint" id="btc-intro-replace-cmd">start-cli net tunnel remove wg0</div>
+        <p class="hint">It has been seen to report success without removing anything, so run it
+        again if the gateway is still listed.</p>
+      </div>
+
       <p class="hint">Four steps, about ten minutes, most of it waiting.</p>
       <div class="actions">
         <button id="btn-btc-wiz-start" class="btn btn-primary">Continue</button>
@@ -645,7 +656,7 @@
 
       <div class="actions">
         <button class="btn btn-primary btc-wiz-exit">Done</button>
-        <button id="btn-btc-wiz-again" class="btn btn-secondary">Set up a different VPS</button>
+        <button id="btn-btc-wiz-again" class="btn btn-secondary">Move to a different VPS</button>
       </div>
     </div>
 
