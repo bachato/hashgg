@@ -17,6 +17,13 @@ const screens = {
   'vps-connecting': document.getElementById('screen-vps-connecting'),
   // Bitcoin reachability wizard. Additive: the mining screens above and the
   // router itself are untouched.
+  'btc-u-intro': document.getElementById('screen-btc-u-intro'),
+  'btc-u-vps': document.getElementById('screen-btc-u-vps'),
+  'btc-u-login': document.getElementById('screen-btc-u-login'),
+  'btc-u-script': document.getElementById('screen-btc-u-script'),
+  'btc-u-connect': document.getElementById('screen-btc-u-connect'),
+  'btc-u-advertise': document.getElementById('screen-btc-u-advertise'),
+  'btc-u-check': document.getElementById('screen-btc-u-check'),
   'btc-intro': document.getElementById('screen-btc-intro'),
   'btc-replace': document.getElementById('screen-btc-replace'),
   'btc-vps': document.getElementById('screen-btc-vps'),
@@ -53,27 +60,29 @@ const els = {
   resetCleanupNote: document.getElementById('reset-cleanup-note'),
   btcSection: document.getElementById('advanced-btc-p2p'),
   btcSummaryNote: document.getElementById('btc-summary-note'),
+  btcLaunch: document.getElementById('btc-launch'),
+  btnBtcUStart: document.getElementById('btn-btc-u-start'),
+  btcUShare: document.getElementById('btc-u-share'),
+  btcUShareHost: document.getElementById('btc-u-share-host'),
+  btnBtcUToLogin: document.getElementById('btn-btc-u-to-login'),
+  btcUIpStatus: document.getElementById('btc-u-ip-status'),
+  btcULoginRest: document.getElementById('btc-u-login-rest'),
+  btcUSshCmd: document.getElementById('btc-u-ssh-cmd'),
+  btnBtcUCopySsh: document.getElementById('btn-btc-u-copy-ssh'),
+  btcUCopySshFeedback: document.getElementById('btc-u-copy-ssh-feedback'),
+  btnBtcUToScript: document.getElementById('btn-btc-u-to-script'),
+  btnBtcUToConnect: document.getElementById('btn-btc-u-to-connect'),
+  btcUConnectStatus: document.getElementById('btc-u-connect-status'),
+  btnBtcURetry: document.getElementById('btn-btc-u-retry'),
   btcIntro: document.getElementById('btc-intro'),
   btcChecklist: document.getElementById('btc-checklist'),
   btcGuidance: document.getElementById('btc-guidance'),
-  btcVpsSetup: document.getElementById('btc-vps-setup'),
-  btcVpsShare: document.getElementById('btc-vps-share'),
   btnBtcUseShared: document.getElementById('btn-btc-use-shared'),
-  btcSharedHost: document.getElementById('btc-shared-host'),
-  btcVpsConsolidate: document.getElementById('btc-vps-consolidate'),
   btcVpsHost: document.getElementById('btc-vps-host'),
-  btnBtcVpsSave: document.getElementById('btn-btc-vps-save'),
-  btcVpsSaveStatus: document.getElementById('btc-vps-save-status'),
-  btcVpsScript: document.getElementById('btc-vps-script'),
-  btcVpsTarget: document.getElementById('btc-vps-target'),
   btcVpsSetupScript: document.getElementById('btc-vps-setup-script'),
   btnBtcCopySetup: document.getElementById('btn-btc-copy-setup'),
   btcCopySetupFeedback: document.getElementById('btc-copy-setup-feedback'),
-  btnBtcVpsTest: document.getElementById('btn-btc-vps-test'),
   btcVpsTestStatus: document.getElementById('btc-vps-test-status'),
-  btnBtcVpsReset: document.getElementById('btn-btc-vps-reset'),
-  btnBtcEnable: document.getElementById('btn-btc-enable'),
-  btcEnableStatus: document.getElementById('btc-enable-status'),
   btcDotTunnel: document.getElementById('btc-dot-tunnel'),
   btcTunnelText: document.getElementById('btc-tunnel-text'),
   btcTunnelErr: document.getElementById('btc-tunnel-err'),
@@ -89,8 +98,6 @@ const els = {
   btnBtcVerify: document.getElementById('btn-btc-verify'),
   btcVerifyStatus: document.getElementById('btc-verify-status'),
   btcAdvertising: document.getElementById('btc-advertising'),
-  btcStepAdvertise: document.getElementById('btc-step-advertise'),
-  btcStepCheck: document.getElementById('btc-step-check'),
   btcFirewallHelp: document.getElementById('btc-firewall-help'),
   btcDoneBanner: document.getElementById('btc-done-banner'),
   btcDoneBannerEndpoint: document.getElementById('btc-done-banner-endpoint'),
@@ -104,7 +111,6 @@ const els = {
   btnBtcDisable: document.getElementById('btn-btc-disable'),
   btcCleanupNote: document.getElementById('btc-cleanup-note'),
   // StartOS 0.4.0 guided flow
-  btcStartos: document.getElementById('btc-startos'),
   btnBtcWizLaunch: document.getElementById('btn-btc-wiz-launch'),
   btnBtcWizResult: document.getElementById('btn-btc-wiz-result'),
   btnBtcWizAgain: document.getElementById('btn-btc-wiz-again'),
@@ -1067,34 +1073,33 @@ function renderBtc(d) {
 
   if (d.capability !== 'full') { renderBtcGuidance(d); return; }
   els.btcGuidance.style.display = 'none';
+  els.btcLaunch.style.display = 'flex';
+
+  const finished = !!d.verified_at && d.tunnel_status === 'connected';
+  els.btnBtcWizLaunch.style.display = d.enabled ? 'none' : 'inline-block';
+  els.btnBtcWizResult.style.display = finished ? 'inline-block' : 'none';
 
   if (!d.enabled) {
     els.btcIntro.style.display = 'block';
     els.btcChecklist.style.display = 'none';
     els.btcSummaryNote.textContent = d.detected
-      ? `· ${shortAgent(d.detected.user_agent)} found, not reachable from the internet`
+      ? `· ${shortAgent(d.detected.user_agent)} found, not reachable yet`
       : (d.detecting ? '· checking…' : '');
-    renderBtcVpsSetup(d);
     return;
   }
 
   els.btcIntro.style.display = 'none';
   els.btcChecklist.style.display = 'block';
 
-  // Summary line — what the user sees without expanding.
-  // Past verification is not present reachability. The collapsed line is all
-  // most people ever read, so it must not claim "reachable" while the tunnel is
-  // down — that is the one place a stale ✓ would be believed without question.
-  if (d.verified_at && d.tunnel_status === 'connected') {
+  if (finished) {
     const peers = (typeof d.inbound_peers === 'number') ? ` · ${d.inbound_peers} inbound` : '';
-    els.btcSummaryNote.textContent = `· reachable at ${d.public_endpoint}${peers}`;
+    els.btcSummaryNote.textContent = `· Already done! Reachable at ${d.public_endpoint}${peers}`;
   } else if (d.verified_at) {
     els.btcSummaryNote.textContent = `· tunnel ${d.tunnel_status} — not reachable right now`;
   } else {
     els.btcSummaryNote.textContent = `· ${d.tunnel_status}`;
   }
 
-  // Step 1 — tunnel
   const TS = {
     connected: ['dot-green', 'Connected'],
     connecting: ['dot-yellow', 'Connecting…'],
@@ -1104,10 +1109,9 @@ function renderBtc(d) {
   const [dot, text] = TS[d.tunnel_status] || ['dot-gray', d.tunnel_status || '—'];
   els.btcDotTunnel.className = `dot ${dot}`;
   els.btcTunnelText.textContent = text;
+
   // A connected tunnel to a node that has stopped answering is the one state
-  // where everything looks fine and nothing works: peers reach the VPS and get
-  // refused at the far end. The tunnel is genuinely up, so this is a note about
-  // the node rather than an error about the tunnel.
+  // where everything looks fine and nothing works.
   const nodeQuiet = d.tunnel_status === 'connected' && !d.detected && !d.detecting;
   if (d.last_error) {
     els.btcTunnelErr.style.display = 'block';
@@ -1118,30 +1122,19 @@ function renderBtc(d) {
       + 'If it is restarting this will clear on its own.';
   } else {
     els.btcTunnelErr.style.display = 'none';
-    els.btcTunnelErr.textContent = '';
+  }
+
+  els.btcDoneBanner.style.display = finished ? 'block' : 'none';
+  if (finished) {
+    els.btcDoneBannerEndpoint.textContent = d.public_endpoint || '';
+    els.btcDoneBannerNote.textContent = (typeof d.inbound_peers === 'number')
+      ? `${d.inbound_peers} other node${d.inbound_peers === 1 ? '' : 's'} connected so far.`
+      : 'Other nodes will start connecting on their own, usually within a few hours.';
   }
 
   const port = d.remote_port || 8333;
   els.btcFirewallCmd.textContent =
     `ufw allow ${port}/tcp comment "HashGG bitcoin p2p"   # or: firewall-cmd --permanent --add-port=${port}/tcp && firewall-cmd --reload`;
-
-  // One step at a time. The config line is only meaningful once the tunnel is
-  // carrying traffic, and checking before the line is in place only produces a
-  // failure the user then has to interpret.
-  const tunnelUp = d.tunnel_status === 'connected';
-  els.btcStepAdvertise.style.display = tunnelUp ? 'list-item' : 'none';
-  els.btcStepCheck.style.display = (tunnelUp && d.acked) ? 'list-item' : 'none';
-
-  // Finished. Say so unmistakably, and stop showing the steps that got them here.
-  const finished = !!d.verified_at && tunnelUp;
-  els.btcDoneBanner.style.display = finished ? 'block' : 'none';
-  if (finished) {
-    els.btcDoneBannerEndpoint.textContent = d.public_endpoint || '';
-    const peers = (typeof d.inbound_peers === 'number')
-      ? `${d.inbound_peers} other node${d.inbound_peers === 1 ? '' : 's'} connected so far.`
-      : 'Other nodes will start connecting on their own, usually within a few hours.';
-    els.btcDoneBannerNote.textContent = peers;
-  }
 
   // Step 3 — the line, and where it goes
   els.btcWhereToPaste.innerHTML = BTC_PASTE_INSTRUCTIONS[d.platform] || BTC_PASTE_INSTRUCTIONS.docker;
@@ -1192,7 +1185,6 @@ function renderBtcGuidance(d) {
       + `${d.verified_at ? ` · checked ${relAge(d.verified_at)}` : ''}`
     : (d.detected ? `· ${shortAgent(d.detected.user_agent)} found` : '');
 
-  els.btcStartos.style.display = (d.capability === 'guided') ? 'block' : 'none';
   if (d.capability === 'guided') {
     // One button per state rather than one that guesses. "Set this up" opening
     // a page that says it is already set up is how it read before.
@@ -1274,20 +1266,6 @@ function setBtcStatus(el, msg, kind) {
   el.className = 'test-status' + (kind ? ` ${kind}` : '');
 }
 
-async function btcEnable() {
-  if (btcBusy) return;
-  btcBusy = true;
-  setBtcStatus(els.btcEnableStatus, 'Setting up…', '');
-  try {
-    await api('POST', '/btc/enable', {});
-    lastBtcSig = null;
-    await refreshBtcStatus();
-    setBtcStatus(els.btcEnableStatus, '', '');
-  } catch (err) {
-    setBtcStatus(els.btcEnableStatus, err.message, 'err');
-  } finally { btcBusy = false; }
-}
-
 async function btcDisable() {
   if (btcBusy) return;
   btcBusy = true;
@@ -1345,6 +1323,7 @@ function verifyHint(raw) {
 async function btcAck() {
   try {
     await api('POST', '/btc/ack', {});
+    btcWizGo('btc-u-check');
     lastBtcSig = null;
     await refreshBtcStatus();
   } catch (err) { showError(err.message); }
@@ -1369,7 +1348,6 @@ async function btcApplyAdvanced() {
   } finally { btcBusy = false; }
 }
 
-els.btnBtcEnable.addEventListener('click', btcEnable);
 els.btnBtcDisable.addEventListener('click', btcDisable);
 els.btnBtcVerify.addEventListener('click', btcVerify);
 els.btnBtcAck.addEventListener('click', btcAck);
@@ -1386,27 +1364,6 @@ els.btnBtcCopyLine.addEventListener('click', () =>
 // one bad branch away from breaking. This is an advanced sub-flow and should not
 // hijack the whole app anyway.
 
-function renderBtcVpsSetup(d) {
-  const configured = !!d.vps_host;
-  els.btcVpsSetup.style.display = configured ? 'none' : 'block';
-  els.btcVpsScript.style.display = configured ? 'block' : 'none';
-  // Nothing to enable until there is a VPS to enable it on.
-  els.btnBtcEnable.disabled = !configured;
-
-  if (configured) {
-    els.btcVpsTarget.textContent = d.vps_host;
-    loadBtcSetupScript();
-    return;
-  }
-
-  const canShare = !!d.stratum_vps_host;
-  els.btcVpsShare.style.display = canShare ? 'block' : 'none';
-  if (canShare) els.btcSharedHost.textContent = d.stratum_vps_host;
-  // Worth saying once, not nagging: someone renting a VPS for this while paying
-  // for playit can usually consolidate onto one machine.
-  els.btcVpsConsolidate.style.display = (!canShare && currentMode === 'playit') ? 'block' : 'none';
-}
-
 let btcSetupScriptFor = null;
 async function loadBtcSetupScript() {
   const host = btcState && btcState.vps_host;
@@ -1420,55 +1377,6 @@ async function loadBtcSetupScript() {
   }
 }
 
-async function btcVpsConfigure(body, statusEl) {
-  setBtcStatus(statusEl, 'Saving…', '');
-  try {
-    await api('POST', '/btc/vps/configure', body);
-    btcSetupScriptFor = null;
-    lastBtcSig = null;
-    await refreshBtcStatus();
-    setBtcStatus(statusEl, '', '');
-  } catch (err) {
-    setBtcStatus(statusEl, err.message, 'err');
-  }
-}
-
-async function btcVpsTest() {
-  setBtcStatus(els.btcVpsTestStatus, 'Connecting…', '');
-  try {
-    const r = await api('POST', '/btc/vps/test-connection', {});
-    setBtcStatus(els.btcVpsTestStatus,
-      r.success ? 'Connected — your VPS is ready' : (r.error || 'Could not connect'),
-      r.success ? 'ok' : 'err');
-  } catch (err) {
-    setBtcStatus(els.btcVpsTestStatus, err.message, 'err');
-  }
-}
-
-async function btcVpsReset() {
-  try {
-    const r = await api('POST', '/btc/vps/reset', {});
-    if (r.cleanup && r.cleanup.externalip_line) {
-      els.btcCleanupNote.style.display = 'block';
-      els.btcCleanupNote.innerHTML = `<strong>One thing left to tidy up.</strong><br>Remove
-        <code>${r.cleanup.externalip_line}</code> from your Bitcoin app's configuration —
-        it points at a VPS you are no longer using.`;
-    }
-    btcSetupScriptFor = null;
-    lastBtcSig = null;
-    await refreshBtcStatus();
-  } catch (err) { showError(err.message); }
-}
-
-els.btnBtcUseShared.addEventListener('click', () =>
-  btcVpsConfigure({ source: 'shared' }, els.btcVpsSaveStatus));
-els.btnBtcVpsSave.addEventListener('click', () => {
-  const h = els.btcVpsHost.value.trim();
-  if (!h) { setBtcStatus(els.btcVpsSaveStatus, 'Enter your VPS address', 'err'); return; }
-  btcVpsConfigure({ source: 'own', host: h }, els.btcVpsSaveStatus);
-});
-els.btnBtcVpsTest.addEventListener('click', btcVpsTest);
-els.btnBtcVpsReset.addEventListener('click', btcVpsReset);
 els.btnBtcCopySetup.addEventListener('click', () =>
   copyText(els.btcVpsSetupScript.textContent, els.btcCopySetupFeedback, els.btnBtcCopySetup));
 
@@ -1510,6 +1418,12 @@ async function loadReplaceBlock() {
 }
 
 function btcWizGo(name) {
+  if (name === 'btc-u-vps') {
+    const share = btcState && btcState.stratum_vps_host;
+    els.btcUShare.style.display = share ? 'block' : 'none';
+    if (share) els.btcUShareHost.textContent = share;
+  }
+  if (name === 'btc-u-script') loadBtcSetupScript();
   if (name === 'btc-startos') fillStartosSshCmd(els.btcStartosSsh, els.btcStartosSshNote);
   if (name === 'btc-replace') {
     fillStartosSshCmd(els.btcReplaceSsh, els.btcReplaceSshNote);
@@ -1529,13 +1443,20 @@ function btcWizGo(name) {
 
 function btcWizLaunch() {
   btcWizReturn = currentScreen || 'dashboard';
-  btcWizGo('btc-intro');
+  btcWizGo(btcState && btcState.capability === 'guided' ? 'btc-intro' : 'btc-u-intro');
 }
 
 // Reached from the dashboard when this is already working — a different button
 // with a different label, rather than one button that guesses.
 function btcWizShowResult() {
   btcWizReturn = currentScreen || 'dashboard';
+  // On Umbrel the dashboard panel already IS the result, in more detail than a
+  // summary screen could give — live tunnel state, peer count, the line for
+  // reference. Sending them to a second surface would be worse, not better.
+  if (btcState && btcState.capability !== 'guided') {
+    document.getElementById('advanced-btc-p2p').open = true;
+    return;
+  }
   btcShowDone(btcState && btcState.verified_endpoint,
               btcState && btcState.verified_agent,
               btcState && btcState.verified_at);
@@ -1727,6 +1648,78 @@ async function btcStartosCleanup(silent) {
 }
 
 // --- navigation ---
+
+// --- Umbrel / plain Docker wizard -------------------------------------------
+
+function btcUUpdateSsh() {
+  const ip = els.btcVpsHost.value.trim();
+  els.btcUSshCmd.textContent = ip ? `ssh root@${ip}` : 'ssh root@…';
+}
+
+els.btcVpsHost.addEventListener('input', () => {
+  btcUUpdateSsh();
+  setBtcStatus(els.btcUIpStatus, '', '');
+  els.btcULoginRest.style.display = btcIpProblem(els.btcVpsHost.value) ? 'none' : 'block';
+});
+
+els.btnBtcUCopySsh.addEventListener('click', () =>
+  copyText(els.btcUSshCmd.textContent, els.btcUCopySshFeedback, els.btnBtcUCopySsh));
+els.btnBtcUStart.addEventListener('click', () => btcWizGo('btc-u-vps'));
+els.btnBtcUToLogin.addEventListener('click', () => btcWizGo('btc-u-login'));
+
+els.btnBtcUToScript.addEventListener('click', async () => {
+  const problem = btcIpProblem(els.btcVpsHost.value);
+  if (problem) { setBtcStatus(els.btcUIpStatus, problem, 'err'); return; }
+  setBtcStatus(els.btcUIpStatus, 'Saving…', '');
+  try {
+    await api('POST', '/btc/vps/configure', { source: 'own', host: els.btcVpsHost.value.trim() });
+    btcSetupScriptFor = null;
+    lastBtcSig = null;
+    await refreshBtcStatus();
+    setBtcStatus(els.btcUIpStatus, '', '');
+    btcWizGo('btc-u-script');
+  } catch (err) {
+    setBtcStatus(els.btcUIpStatus, err.message, 'err');
+  }
+});
+
+els.btnBtcUseShared.addEventListener('click', async () => {
+  try {
+    await api('POST', '/btc/vps/configure', { source: 'shared' });
+    btcSetupScriptFor = null;
+    lastBtcSig = null;
+    await refreshBtcStatus();
+    els.btcVpsHost.value = (btcState && btcState.vps_host) || '';
+    btcUUpdateSsh();
+    // The setup script still has to run on it: that server carries mining, not
+    // yet the Bitcoin port.
+    btcWizGo('btc-u-login');
+  } catch (err) { showError(err.message); }
+});
+
+// Turning the tunnel on is HashGG's job, so the user watches rather than acts.
+async function btcUConnect() {
+  btcWizGo('btc-u-connect');
+  els.btnBtcURetry.style.display = 'none';
+  document.querySelectorAll('#screen-btc-u-connect .btc-wiz-back')
+    .forEach((b) => { b.style.display = 'none'; });
+  setBtcStatus(els.btcUConnectStatus, 'Connecting…', '');
+  try {
+    await api('POST', '/btc/enable', {});
+    lastBtcSig = null;
+    await refreshBtcStatus();
+    setBtcStatus(els.btcUConnectStatus, '', '');
+    btcWizGo('btc-u-advertise');
+  } catch (err) {
+    setBtcStatus(els.btcUConnectStatus, err.message, 'err');
+    els.btnBtcURetry.style.display = 'inline-block';
+    document.querySelectorAll('#screen-btc-u-connect .btc-wiz-back')
+      .forEach((b) => { b.style.display = 'inline-block'; });
+  }
+}
+
+els.btnBtcUToConnect.addEventListener('click', btcUConnect);
+els.btnBtcURetry.addEventListener('click', btcUConnect);
 
 els.btnBtcWizLaunch.addEventListener('click', btcWizLaunch);
 els.btnBtcWizResult.addEventListener('click', btcWizShowResult);

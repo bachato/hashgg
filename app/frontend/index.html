@@ -140,144 +140,30 @@
         <summary>Make your Bitcoin node reachable <span id="btc-summary-note" class="btc-summary-note"></span></summary>
         <div class="advanced-miners-body">
 
-          <!-- STATE A: not yet enabled — what this actually means -->
+          <!-- Not set up yet. Deliberately short: the explaining belongs in the
+               wizard, where it arrives one screen at a time. -->
           <div id="btc-intro">
-            <p><strong>What this does.</strong> Other Bitcoin nodes will be able to
-            connect to your node through your VPS. Today your node can only reach
-            out; nothing can reach in.</p>
-
-            <ul class="btc-facts">
-              <li><strong>Your home IP stays private.</strong> Peers connect to your VPS, not to you.</li>
-              <li><strong>This does not make your node anonymous.</strong> Connections your
-                  node makes <em>out</em> still leave from your home internet connection,
-                  exactly as they do now.</li>
-              <li><strong>Expect roughly 100–300&nbsp;GB a month of extra VPS traffic</strong>,
-                  sometimes more when another node is syncing from you. Check your VPS
-                  plan's allowance — you can cap it, see below.</li>
-              <li><strong>Incoming peers all look like one local connection</strong> to your
-                  node. That is exactly how inbound Tor already works, and is normal.</li>
-              <li><strong>One manual step, once.</strong> You will paste a single line into
-                  your Bitcoin app's settings. We give you the line and a Copy button.</li>
-              <li><strong>Before you uninstall HashGG or change VPS</strong>, turn this off and
-                  remove that line — otherwise your node keeps advertising a dead address.</li>
-            </ul>
-
-            <!-- The P2P endpoint needs a VPS. It does not have to be the one
-                 carrying stratum, and a playit user may have none at all — so
-                 this is a self-contained sub-flow rather than the full-screen
-                 onboarding, which belongs to the mining path. -->
-            <div id="btc-vps-setup" style="display:none;">
-              <div class="hint-box">
-                <strong>This needs a VPS.</strong> Your node gets its public address from one.
-                About $5/month is plenty — it needs a dedicated IPv4 and enough transfer
-                allowance, not a fast machine.
-              </div>
-
-              <div id="btc-vps-share" style="display:none;">
-                <div class="actions">
-                  <button id="btn-btc-use-shared" class="btn btn-primary btn-sm">Use my HashGG VPS</button>
-                  <span id="btc-shared-host" class="hint"></span>
-                </div>
-                <p class="hint">…or use a different one:</p>
-              </div>
-
-              <p id="btc-vps-consolidate" class="hint" style="display:none;">
-                You are paying for playit.gg for mining. One VPS can carry both, which
-                would let you drop that subscription and have one machine to look after.
-              </p>
-
-              <div class="advanced-grid">
-                <div class="form-group">
-                  <label class="form-label" for="btc-vps-host">VPS address</label>
-                  <input type="text" id="btc-vps-host" class="form-input" placeholder="e.g. 203.0.113.9" autocomplete="off" spellcheck="false">
-                </div>
-              </div>
-              <div class="actions">
-                <button id="btn-btc-vps-save" class="btn btn-secondary btn-sm">Use this VPS</button>
-                <span id="btc-vps-save-status" class="test-status"></span>
-              </div>
-            </div>
-
-            <!-- Configured: install access, then prove it works. -->
-            <div id="btc-vps-script" style="display:none;">
-              <p class="hint">Run this on <strong><span id="btc-vps-target"></span></strong> as
-              root. It creates a restricted user for HashGG and opens the port.</p>
-              <div class="script-box"><pre id="btc-vps-setup-script" class="script-pre"></pre></div>
-              <div class="actions">
-                <button id="btn-btc-copy-setup" class="btn btn-secondary btn-sm">Copy</button>
-                <span id="btc-copy-setup-feedback" class="copy-feedback" style="display:none;">Copied!</span>
-              </div>
-              <div class="actions">
-                <button id="btn-btc-vps-test" class="btn btn-secondary btn-sm">Test connection</button>
-                <span id="btc-vps-test-status" class="test-status"></span>
-                <button id="btn-btc-vps-reset" class="btn btn-danger btn-sm">Use a different VPS</button>
-              </div>
-            </div>
-
-            <div class="actions">
-              <button id="btn-btc-enable" class="btn btn-primary">Make my node reachable</button>
-              <span id="btc-enable-status" class="test-status"></span>
-            </div>
+            <p>Other Bitcoin nodes cannot reach yours at the moment. Setting this up gives it a
+            public address so they can — without revealing your home internet connection.</p>
+            <p class="hint">HashGG walks you through it. About ten minutes, most of it waiting.</p>
           </div>
 
-          <!-- STATE B: enabled — the checklist -->
+          <!-- Set up: this is a status display, not a set of instructions. -->
           <div id="btc-checklist" style="display:none;">
-            <ol class="btc-steps">
-              <li>
-                <div class="btc-step-head">
-                  <span id="btc-dot-tunnel" class="dot dot-gray"></span>
-                  <strong>Tunnel</strong>
-                  <span id="btc-tunnel-text" class="status-value">—</span>
-                </div>
-                <p id="btc-tunnel-err" class="btc-err" style="display:none;"></p>
-              </li>
-
-              <li id="btc-step-advertise" style="display:none;">
-                <div class="btc-step-head"><strong>Tell your node to advertise it</strong></div>
-                <p id="btc-where-to-paste" class="hint"></p>
-                <div style="display:flex;align-items:center;gap:0.5rem;">
-                  <div class="code-hint" id="btc-externalip-line" style="flex:1;margin:0;"></div>
-                  <button id="btn-btc-copy-line" class="btn btn-secondary btn-sm">Copy</button>
-                  <span id="btc-copy-line-feedback" class="copy-feedback" style="display:none;">Copied!</span>
-                </div>
-                <p class="hint">Saving restarts your node briefly.</p>
-                <div class="actions">
-                  <button id="btn-btc-ack" class="btn btn-secondary btn-sm">I've added the line</button>
-                  <span id="btc-ack-state" class="test-status"></span>
-                </div>
-              </li>
-
-              <li id="btc-step-check" style="display:none;">
-                <div class="btc-step-head"><strong>Check it worked</strong></div>
-                <div class="actions">
-                  <button id="btn-btc-verify" class="btn btn-primary btn-sm">Check it now</button>
-                  <span id="btc-verify-status" class="test-status"></span>
-                </div>
-                <p id="btc-advertising" class="hint" style="display:none;"></p>
-
-                <div id="btc-firewall-help" class="warn-box" style="display:none;">
-                  <p><strong>If that did not work, the port is probably closed on your VPS.</strong>
-                  Connect to it and run this:</p>
-                  <div style="display:flex;align-items:center;gap:0.5rem;">
-                    <div class="code-hint" id="btc-firewall-cmd" style="flex:1;margin:0;"></div>
-                    <button id="btn-btc-copy-firewall" class="btn btn-secondary btn-sm">Copy</button>
-                    <span id="btc-copy-fw-feedback" class="copy-feedback" style="display:none;">Copied!</span>
-                  </div>
-                  <p class="hint">If your VPS provider has its own firewall page, allow the same
-                  port there too.</p>
-                </div>
-              </li>
-            </ol>
-
-            <!-- Reached the end. Plain text saying "reachable" reads as one more
-                 instruction, which is how the StartOS ending failed. -->
-            <div id="btc-done-banner" class="btc-success" style="display:none;padding:1rem 0 0.5rem;">
+            <div id="btc-done-banner" class="btc-success" style="display:none;padding:0.5rem 0;">
               <div class="btc-success-mark">✓</div>
               <p><strong>Your node is reachable from the internet.</strong></p>
               <p class="btc-success-endpoint" id="btc-done-banner-endpoint">—</p>
               <p class="hint" id="btc-done-banner-note"></p>
             </div>
 
+            <div class="btc-step-head">
+              <span id="btc-dot-tunnel" class="dot dot-gray"></span>
+              <strong>Tunnel</strong>
+              <span id="btc-tunnel-text" class="status-value">—</span>
+            </div>
+            <p id="btc-tunnel-err" class="btc-err" style="display:none;"></p>
+            <p id="btc-advertising" class="hint" style="display:none;"></p>
             <div id="btc-stale-warning" class="hint-box" style="display:none;"></div>
 
             <details class="btc-sub">
@@ -320,20 +206,13 @@
             <div id="btc-cleanup-note" class="hint-box" style="display:none;"></div>
           </div>
 
-          <!-- STATE C: platform can't do this, or does it natively -->
+          <!-- Platform cannot do this, or does it natively -->
           <div id="btc-guidance" style="display:none;"></div>
 
-          <!-- STATE D: StartOS 0.4.0 — launches the wizard. The steps used to
-               live here and grew the page downward past the point anyone could
-               tell where they were. -->
-          <div id="btc-startos" style="display:none;">
-            <div class="actions">
-              <button id="btn-btc-wiz-launch" class="btn btn-primary">Set this up</button>
-              <button id="btn-btc-wiz-result" class="btn btn-secondary" style="display:none;">View details</button>
-              <span id="btc-wiz-launch-note" class="test-status"></span>
-            </div>
+          <div id="btc-launch" class="actions" style="display:none;">
+            <button id="btn-btc-wiz-launch" class="btn btn-primary">Set this up</button>
+            <button id="btn-btc-wiz-result" class="btn btn-secondary" style="display:none;">View details</button>
           </div>
-
         </div>
       </details>
 
@@ -427,6 +306,191 @@
       <div class="actions">
         <button id="btn-vps-instructions-continue" class="btn btn-primary">Continue →</button>
         <button id="btn-vps-instructions-back" class="btn btn-secondary">← Back</button>
+      </div>
+    </div>
+
+    <!-- ─── Bitcoin reachability wizard (Umbrel / plain Docker) ───────────────
+         Same shape as the StartOS one and for the same reason: linear, done
+         once, and each step is a different kind of work — buy a machine, log
+         into it, paste something, then edit a setting in a different app. -->
+
+    <div id="screen-btc-u-intro" class="screen" style="display:none;">
+      <h2>Make your Bitcoin node reachable</h2>
+      <p>Right now your node can reach out to the Bitcoin network, but nothing can reach in.
+      This gives it a public address so other nodes can connect to it.</p>
+
+      <ul class="btc-facts">
+        <li><strong>Your home IP stays private.</strong> Other nodes connect to a small rented
+            server, not to you.</li>
+        <li><strong>It does not make your node anonymous.</strong> Connections your node makes
+            <em>out</em> still leave from your home internet, exactly as they do now.</li>
+        <li><strong>Expect 100–300 GB a month of extra traffic</strong> on that server. The plan
+            we suggest includes far more than that.</li>
+        <li><strong>It costs about €6 a month</strong> for the server. Nothing else.</li>
+      </ul>
+
+      <p class="hint">Five steps, about ten minutes, most of it waiting.</p>
+      <div class="actions">
+        <button id="btn-btc-u-start" class="btn btn-primary">Continue</button>
+        <button class="btn btn-secondary btc-wiz-exit">Cancel</button>
+      </div>
+    </div>
+
+    <div id="screen-btc-u-vps" class="screen" style="display:none;">
+      <h2>Step 1 of 5 — Get a server</h2>
+      <p>Your node needs a public address, and this is where it comes from: a small rented Linux
+      machine, called a VPS.</p>
+      <p><strong>Get a blank one — you do not set anything up on it.</strong> HashGG gives you
+      one thing to paste and does the rest.</p>
+
+      <div id="btc-u-share" class="hint-box" style="display:none;">
+        <p><strong>You already have one.</strong> The server carrying your mining tunnel can do
+        this too, at no extra cost.</p>
+        <div class="actions">
+          <button id="btn-btc-use-shared" class="btn btn-primary btn-sm">Use it</button>
+          <span id="btc-u-share-host" class="hint"></span>
+        </div>
+      </div>
+
+      <div class="step-list">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <strong>Open the €6/month plan</strong><br>
+            <span class="step-desc">This link goes straight to the right one. The site's own
+            pricing page highlights the €12 plan, but €6 is plenty.</span><br>
+            <a href="https://btcvps.com/new-server/VPS2?months=1" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="margin-top:0.5rem;display:inline-block;">Open BTCVPS ↗</a>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <strong>Place the order</strong><br>
+            <span class="step-desc">Only an email address is needed. For privacy, pay with
+            non-KYC Bitcoin.</span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <strong>Open <em>Servers</em> → <em>Manage</em></strong><br>
+            <span class="step-desc">That page shows the new server's IP address and root
+            password. You need both on the next screen.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="btn-btc-u-to-login" class="btn btn-primary">I have a server →</button>
+        <button class="btn btn-secondary btc-wiz-back" data-back="btc-u-intro">← Back</button>
+      </div>
+    </div>
+
+    <div id="screen-btc-u-login" class="screen" style="display:none;">
+      <h2>Step 2 of 5 — Log in to it</h2>
+      <div class="form-group">
+        <label class="form-label" for="btc-vps-host">Your server's IP address</label>
+        <input type="text" id="btc-vps-host" class="form-input" placeholder="e.g. 203.0.113.9" autocomplete="off" spellcheck="false">
+        <span id="btc-u-ip-status" class="test-status"></span>
+      </div>
+
+      <div id="btc-u-login-rest" style="display:none;">
+        <p>Open a terminal — on Windows press the Start button and type
+        <strong>Command Prompt</strong>; on a Mac press <kbd>⌘</kbd>+Space and type
+        <strong>Terminal</strong>. Then run this:</p>
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+          <div class="code-hint" id="btc-u-ssh-cmd" style="flex:1;margin:0;">ssh root@…</div>
+          <button id="btn-btc-u-copy-ssh" class="btn btn-secondary btn-sm">Copy</button>
+          <span id="btc-u-copy-ssh-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+        </div>
+        <div class="hint-box">
+          The first time, it asks whether you trust the server — type <code>yes</code> and press
+          Enter. Then it asks for the root password from the Manage page.
+          <strong>Nothing appears on screen as you type or paste the password</strong> — that is
+          normal, just press Enter.
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="btn-btc-u-to-script" class="btn btn-primary">I'm logged in →</button>
+        <button class="btn btn-secondary btc-wiz-back" data-back="btc-u-vps">← Back</button>
+      </div>
+    </div>
+
+    <div id="screen-btc-u-script" class="screen" style="display:none;">
+      <h2>Step 3 of 5 — Paste this into the server</h2>
+      <p>Paste the whole thing into that terminal and press Enter. It sets the server up to carry
+      your node's connections.</p>
+      <div class="script-box">
+        <pre id="btc-vps-setup-script" class="script-pre">Loading…</pre>
+      </div>
+      <div class="actions">
+        <button id="btn-btc-copy-setup" class="btn btn-secondary btn-sm">Copy</button>
+        <span id="btc-copy-setup-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+      </div>
+      <div class="actions">
+        <button id="btn-btc-u-to-connect" class="btn btn-primary">I've run it →</button>
+        <span id="btc-vps-test-status" class="test-status"></span>
+        <button class="btn btn-secondary btc-wiz-back" data-back="btc-u-login">← Back</button>
+      </div>
+    </div>
+
+    <div id="screen-btc-u-connect" class="screen" style="display:none;">
+      <h2>Step 4 of 5 — Connecting</h2>
+      <p>HashGG is opening the connection between your server and your Bitcoin node. This takes a
+      few seconds.</p>
+      <p id="btc-u-connect-status" class="test-status"></p>
+      <div class="actions">
+        <button id="btn-btc-u-retry" class="btn btn-primary" style="display:none;">Try again</button>
+        <button class="btn btn-secondary btc-wiz-back" data-back="btc-u-script" style="display:none;">← Back</button>
+      </div>
+    </div>
+
+    <div id="screen-btc-u-advertise" class="screen" style="display:none;">
+      <h2>Step 5 of 5 — Tell your node its address</h2>
+      <div class="hint-box">
+        <p><strong>You can close the terminal now</strong> — the rest happens in your browser.</p>
+      </div>
+      <p>Your node has a public address, but it does not know that yet. Add this one line to its
+      settings:</p>
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+        <div class="code-hint" id="btc-externalip-line" style="flex:1;margin:0;">—</div>
+        <button id="btn-btc-copy-line" class="btn btn-secondary btn-sm">Copy</button>
+        <span id="btc-copy-line-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+      </div>
+      <p id="btc-where-to-paste"></p>
+      <p class="hint">Saving restarts your node, which takes about a minute. That is expected.</p>
+      <div class="actions">
+        <button id="btn-btc-ack" class="btn btn-primary">I've added it →</button>
+        <span id="btc-ack-state" class="test-status"></span>
+        <button class="btn btn-secondary btc-wiz-exit">Finish later</button>
+      </div>
+    </div>
+
+    <div id="screen-btc-u-check" class="screen" style="display:none;">
+      <h2>Checking</h2>
+      <p>HashGG is connecting to your node from the internet, the same way another Bitcoin node
+      would, to confirm it really answers.</p>
+      <div class="actions">
+        <button id="btn-btc-verify" class="btn btn-primary">Check it now</button>
+        <span id="btc-verify-status" class="test-status"></span>
+      </div>
+
+      <div id="btc-firewall-help" class="warn-box" style="display:none;">
+        <p><strong>If it did not answer, the door on your server is probably still shut.</strong>
+        Go back to the terminal and paste this, then check again:</p>
+        <div style="display:flex;align-items:center;gap:0.5rem;">
+          <div class="code-hint" id="btc-firewall-cmd" style="flex:1;margin:0;"></div>
+          <button id="btn-btc-copy-firewall" class="btn btn-secondary btn-sm">Copy</button>
+          <span id="btc-copy-fw-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+        </div>
+        <p class="hint">If your server provider has its own firewall page, allow the same port
+        there too.</p>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-secondary btc-wiz-back" data-back="btc-u-advertise">← Back</button>
+        <button class="btn btn-secondary btc-wiz-exit">Finish later</button>
       </div>
     </div>
 
