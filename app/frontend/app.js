@@ -1141,12 +1141,13 @@ function renderBtcGuidance(d) {
       <p><strong>Get a blank one — you do not set anything up on it yourself.</strong> The first
       step below installs and configures everything for you, including <strong>StartTunnel</strong>,
       the Start9 software that links the VPS to your server.</p>
-      <p class="hint"><strong>Where to get one:</strong> around $5 a month is plenty — this needs a
-      steady address and generous data transfer, not a fast machine.
-      <a href="https://app.bitlaunch.io/signup" target="_blank" rel="noopener">BitLaunch</a> is the
-      same provider we suggest for the mining tunnel, and takes Bitcoin. Two things to check before
-      you pay: choose <strong>Debian 12 or newer</strong> (Debian specifically — Ubuntu will not
-      work), and make sure it comes with its own <strong>dedicated public IPv4 address</strong>.</p>
+      <p class="hint"><strong>Where to get one:</strong> this needs a steady address and generous
+      data transfer, not a fast machine. We suggest
+      <a href="https://btcvps.com/new-server/VPS2?months=1" target="_blank" rel="noopener">BTCVPS's €6/month plan</a> — the same
+      provider we suggest for the mining tunnel, paid in Bitcoin, and its 4&nbsp;TB of monthly
+      transfer is ample for a Bitcoin node. That link goes straight to the right plan; the site's
+      own pricing page highlights the €12 one, which you do not need. When you order it, choose
+      <strong>Debian</strong> as the operating system — Ubuntu will not work here.</p>
       <p class="hint">After that, HashGG writes the commands for you — StartOS then opens the port
       and tells your node to advertise it, so there is no config line to paste.</p>`;
   } else {

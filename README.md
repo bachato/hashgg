@@ -9,7 +9,7 @@
 HashGG exposes your [Datum Gateway](https://github.com/ocean-xyz/datum-gateway) stratum port to the public internet — so any miner, anywhere, can connect to *your* node and mine blocks *you* built. Choose between two tunnel options:
 
 - **playit.gg** (~$3/month, fiat) — easiest setup, managed service
-- **VPS SSH tunnel** (~$11/month, Bitcoin) — privacy-focused, full control, no third-party dependency on the data path
+- **VPS SSH tunnel** (~€6/month, Bitcoin) — privacy-focused, full control, no third-party dependency on the data path
 
 It can also [**make your Bitcoin node reachable**](#make-your-bitcoin-node-reachable) on the public internet, so other nodes can connect to yours — without exposing your home IP address. Opt-in, and off by default.
 
@@ -72,7 +72,7 @@ Either path, you'll also need:
 - **[Datum Gateway](https://github.com/ocean-xyz/datum-gateway)** running alongside Bitcoin Knots.
 - One of:
   - A [playit.gg](https://playit.gg) account with **Premium** (~$3/month) — [why?](#why-premium), **or**
-  - A VPS with root SSH access (any Debian, Ubuntu, or RHEL-family distro). We recommend [BitLaunch](https://app.bitlaunch.io/signup) (~$11/month, funded with Bitcoin, anonymous signup).
+  - A VPS with root SSH access (any Debian, Ubuntu, or RHEL-family distro). We recommend [BTCVPS](https://btcvps.com/new-server/VPS2?months=1) (€6/month, paid in Bitcoin, anonymous signup, 4 TB monthly transfer).
 
 ## Quick Start (StartOS)
 

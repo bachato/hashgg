@@ -401,7 +401,7 @@
         </div>
         <div class="tunnel-option" id="choice-vps">
           <div class="tunnel-option-name">VPS Tunnel</div>
-          <div class="tunnel-option-price">~$11 / month</div>
+          <div class="tunnel-option-price">~€6 / month</div>
           <ul class="tunnel-option-features">
             <li>Privacy-focused</li>
             <li>Bitcoin payment</li>
@@ -415,34 +415,35 @@
     <!-- VPS Instructions Screen -->
     <div id="screen-vps-instructions" class="screen" style="display:none;">
       <h2>Set up your VPS</h2>
-      <p>We recommend <strong>BitLaunch</strong> — anonymous signup, funded with Bitcoin, no personal information required.</p>
+      <p>We recommend <strong>BTCVPS</strong> — email-only signup, paid in Bitcoin, no personal information required.</p>
 
       <div class="step-list">
         <div class="step">
           <div class="step-num">1</div>
           <div class="step-body">
-            <strong>Create a BitLaunch account</strong><br>
-            <span class="step-desc">Only an email address is required — can be anonymous.</span><br>
-            <a href="https://app.bitlaunch.io/signup" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="margin-top:0.5rem;display:inline-block;">Open BitLaunch ↗</a>
+            <strong>Open the €6/month plan</strong><br>
+            <span class="step-desc">This link goes straight to the right one. The site's own
+            pricing page highlights the €12 plan, but €6 is plenty for HashGG — it includes
+            4&nbsp;TB of transfer a month.</span><br>
+            <a href="https://btcvps.com/new-server/VPS2?months=1" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="margin-top:0.5rem;display:inline-block;">Open BTCVPS ↗</a>
           </div>
         </div>
         <div class="step">
           <div class="step-num">2</div>
           <div class="step-body">
-            <strong>Fund your account with Bitcoin</strong><br>
-            <span class="step-desc">Go to <em>Account → Add Funds</em>. Top up $20 (the default credit amount). For privacy, use non-KYC Bitcoin — e.g. from a CoinJoin wallet or a peer-to-peer exchange.</span>
+            <strong>Choose <em>Debian</em> and place the order</strong><br>
+            <div class="config-table">
+              <div class="config-row"><span class="config-key">Plan</span><span class="config-val">VPS2 — €6/mo (1 vCPU, 2 GB RAM, 4 TB transfer)</span></div>
+              <div class="config-row"><span class="config-key">Operating system</span><span class="config-val">Debian</span></div>
+            </div>
+            <span class="step-desc">Only an email address is needed. For privacy, pay with non-KYC Bitcoin — e.g. from a CoinJoin wallet or a peer-to-peer exchange.</span>
           </div>
         </div>
         <div class="step">
           <div class="step-num">3</div>
           <div class="step-body">
-            <strong>Create a server with these settings:</strong><br>
-            <div class="config-table">
-              <div class="config-row"><span class="config-key">Host</span><span class="config-val">BitLaunch</span></div>
-              <div class="config-row"><span class="config-key">Image</span><span class="config-val">Debian 13</span></div>
-              <div class="config-row"><span class="config-key">Size</span><span class="config-val">$11/mo (1 vCPU, 1 GB RAM)</span></div>
-            </div>
-            <span class="step-desc">Note the server's IP address once it's provisioned (~1–2 minutes).</span>
+            <strong>Wait for the server, then note its details</strong><br>
+            <span class="step-desc">You'll get the IP address and the root password once it's ready. You need the IP address for the next screen.</span>
           </div>
         </div>
       </div>
@@ -504,9 +505,11 @@
       </div>
 
       <div class="hint-box" style="margin-bottom:0.75rem;">
-        <strong>Using BitLaunch with Password auth?</strong> You can skip SSH entirely — go to your server's
-        3-dot menu and select <em>Console</em> to open a browser-based terminal.
-        NOTE: You may not see a prompt — just type <code>root</code> and press Enter, then it will ask for your password.
+        <strong>No SSH client handy?</strong> Most providers, BTCVPS included, offer a
+        browser-based console from the server's control panel — look for <em>Console</em> or
+        <em>VNC</em>. You can paste the script there instead.
+        NOTE: you may not see a prompt — type <code>root</code> and press Enter, then give the
+        password your provider sent you.
       </div>
 
       <p>Then paste the setup script:</p>

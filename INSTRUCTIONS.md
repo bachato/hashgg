@@ -3,7 +3,7 @@
 HashGG tunnels your Datum Gateway stratum port to the internet, letting miners connect from anywhere — no port forwarding, no VPN, no static IP needed. You choose between two tunnel options:
 
 - **playit.gg** (~$3/month, fiat) — easiest setup, managed service
-- **VPS SSH tunnel** (~$11/month, Bitcoin) — privacy-focused, full control
+- **VPS SSH tunnel** (~€6/month, Bitcoin) — privacy-focused, full control
 
 # Quick Start
 
@@ -11,7 +11,7 @@ HashGG tunnels your Datum Gateway stratum port to the internet, letting miners c
 2. Start **HashGG** and open its dashboard.
 3. On first launch, HashGG asks you to pick a tunnel method:
    - **playit.gg** — click **Start Setup**, approve the claim URL in your browser, done.
-   - **VPS** — provision a VPS (we recommend [BitLaunch](https://app.bitlaunch.io/signup)), paste the one-line setup script into its root shell, enter the VPS IP in the HashGG UI.
+   - **VPS** — provision a VPS (we recommend [BTCVPS](https://btcvps.com/new-server/VPS2?months=1), paste the one-line setup script into its root shell, enter the VPS IP in the HashGG UI.
 4. Once connected, HashGG displays your **Mining Endpoint** — a public `stratum+tcp://host:port` address.
 5. Point your miners at that endpoint.
 
@@ -40,12 +40,12 @@ You can also paste an existing agent secret key via **"Enter secret key manually
 
 HashGG can also tunnel through a small VPS you control, using a standard SSH reverse tunnel. This avoids dependency on a third-party tunnel service on the data path.
 
-**Recommended provider: [BitLaunch](https://app.bitlaunch.io/signup)** — anonymous signup (email only), Bitcoin-funded, ~$11/month for a 1 vCPU / 1 GB server. For privacy, fund with non-KYC Bitcoin. Any Debian / Ubuntu / RHEL-family VPS with root SSH will work, though.
+**Recommended provider: [BTCVPS](https://btcvps.com/new-server/VPS2?months=1)** — anonymous signup (email only), paid in Bitcoin, €6/month for a 1 vCPU / 2 GB server with 4 TB of monthly transfer. That link opens the €6 plan directly; the site's pricing page highlights the €12 one, which HashGG does not need. For privacy, pay with non-KYC Bitcoin. Any Debian / Ubuntu / RHEL-family VPS with root SSH will work, though.
 
 The flow (all guided by the UI):
 
 1. Pick **VPS Tunnel** on the tunnel-choice screen.
-2. Read the BitLaunch setup tips, then enter your server's IP.
+2. Read the setup tips, then enter your server's IP.
 3. HashGG generates a setup script containing a fresh ED25519 public key. Copy it.
 4. SSH into your VPS as root (the UI shows the exact `ssh root@<IP>` command) and paste the script. It creates a restricted `hashgg` user, installs the public key, and locks down sshd so the user can only do reverse port forwarding.
 5. Click **Test Connection**. If it succeeds, click **Connect**.

@@ -13,8 +13,8 @@ description:
   long: |
     HashGG connects your Datum Gateway stratum port to the public internet
     with no port forwarding or static IP required. Choose between two tunnel
-    options: playit.gg (~$3/month, fiat) or a VPS SSH tunnel (~$11/month,
-    Bitcoin-funded via BitLaunch for privacy). Both options monitor and
+    options: playit.gg (~$3/month, fiat) or a VPS SSH tunnel (~EUR 6/month,
+    paid in Bitcoin via BTCVPS for privacy). Both options monitor and
     auto-restart the tunnel. Miners anywhere can connect using the public
     endpoint displayed in the dashboard.
 assets:
