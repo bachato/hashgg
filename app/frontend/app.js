@@ -109,10 +109,12 @@ const els = {
   btnBtcWizManual: document.getElementById('btn-btc-wiz-manual'),
   btcLoginRest: document.getElementById('btc-login-rest'),
   btcStartosSsh: document.getElementById('btc-startos-ssh'),
+  btcStartosSshNote: document.getElementById('btc-startos-ssh-note'),
   btnBtcCopySos: document.getElementById('btn-btc-copy-sos'),
   btcCopySosFeedback: document.getElementById('btc-copy-sos-feedback'),
   btcDoneEndpoint: document.getElementById('btc-done-endpoint'),
   btcDoneAgent: document.getElementById('btc-done-agent'),
+  btcCleanupWarn: document.getElementById('btc-cleanup-warn'),
   btnBtcRecheck: document.getElementById('btn-btc-recheck'),
   btcRecheckStatus: document.getElementById('btc-recheck-status'),
   btcVpsIp: document.getElementById('btc-vps-ip'),
@@ -1153,7 +1155,8 @@ function renderBtcGuidance(d) {
   // live signal, and a timestamp says how much to trust it without asking the
   // reader to parse a tense.
   els.btcSummaryNote.textContent = d.verified_endpoint
-    ? `· on — reachable at ${d.verified_endpoint}${d.verified_at ? ` · checked ${relAge(d.verified_at)}` : ''}`
+    ? `· Already done! Your node is reachable at ${d.verified_endpoint}`
+      + `${d.verified_at ? ` · checked ${relAge(d.verified_at)}` : ''}`
     : (d.detected ? `· ${shortAgent(d.detected.user_agent)} found` : '');
 
   els.btcStartos.style.display = (d.capability === 'guided') ? 'block' : 'none';
@@ -1200,8 +1203,8 @@ function renderBtcGuidance(d) {
       transfer is ample for a Bitcoin node. That link goes straight to the right plan; the site's
       own pricing page highlights the €12 one, which you do not need. When you order it, choose
       <strong>Debian</strong> as the operating system — Ubuntu will not work here.</p>
-      <p class="hint">After that, HashGG writes the commands for you — StartOS then opens the port
-      and tells your node to advertise it, so there is no config line to paste.</p>`;
+      <p class="hint">After that, HashGG writes the commands for you, and StartOS opens the port
+      and tells your node to advertise it.</p>`;
   } else {
     els.btcGuidance.innerHTML = `
       <p>On this version of StartOS, the Bitcoin package rewrites its configuration every time it
@@ -1444,7 +1447,23 @@ els.btnBtcCopySetup.addEventListener('click', () =>
 
 let btcWizReturn = 'dashboard';
 
+// The browser is already talking to StartOS, so its own address usually carries
+// the server name — filling it in beats asking someone to substitute a
+// placeholder they have to go and look up. Falls back to the placeholder when
+// reached by IP or over Tor, where the name is genuinely not knowable.
+function fillStartosSshCmd() {
+  const m = String(location.hostname || '').match(/^(?:.*\.)?([a-z0-9-]+)\.local$/i);
+  if (m && m[1] && m[1] !== 'localhost') {
+    els.btcStartosSsh.textContent = `ssh start9@${m[1]}.local`;
+    els.btcStartosSshNote.style.display = 'none';
+  } else {
+    els.btcStartosSsh.textContent = 'ssh start9@your-server.local';
+    els.btcStartosSshNote.style.display = 'block';
+  }
+}
+
 function btcWizGo(name) {
+  if (name === 'btc-startos') fillStartosSshCmd();
   btcWizLeaving = !String(name).startsWith('btc-');
   showScreen(name);
   btcWizLeaving = false;
@@ -1465,12 +1484,17 @@ function btcWizShowResult() {
               btcState && btcState.verified_at);
 }
 
-function btcShowDone(endpoint, agent, checkedAt) {
+function btcShowDone(endpoint, agent, checkedAt, justFinished) {
   els.btcDoneEndpoint.textContent = endpoint || '—';
   const who = agent ? `${shortAgent(agent)} answered from the internet` : 'Your node answered from the internet';
   els.btcDoneAgent.textContent = checkedAt ? `${who}, checked ${relAge(checkedAt)}.` : `${who}.`;
   setBtcStatus(els.btcRecheckStatus, '', '');
+  els.btcCleanupWarn.style.display = 'none';
   btcWizGo('btc-done');
+  // Only after a run we just completed. Arriving here from the dashboard means
+  // the access was withdrawn long ago, and trying again would fail and raise an
+  // alarm about something already handled.
+  if (justFinished) btcStartosCleanup(true);
 }
 
 // The claim on the dashboard is only as good as the last check, so let people
@@ -1529,7 +1553,7 @@ async function startosVerify() {
     if (r.ok && !r.warning) {
       lastBtcSig = null;
       await refreshBtcStatus();
-      btcShowDone(`${r.host}:${r.port}`, r.user_agent);
+      btcShowDone(`${r.host}:${r.port}`, r.user_agent, new Date().toISOString(), true);
     } else {
       setBtcStatus(els.btcStartosVerifyStatus, r.warning || verifyHint(r.error), 'err');
     }
@@ -1632,15 +1656,15 @@ async function btcRunSetup() {
   }
 }
 
-async function btcStartosCleanup() {
-  setBtcStatus(els.btcCleanupStatus, 'Removing…', '');
+async function btcStartosCleanup(silent) {
+  if (!silent) setBtcStatus(els.btcCleanupStatus, 'Removing…', '');
   try {
     const r = await api('POST', '/btc/startos/cleanup', {});
-    setBtcStatus(els.btcCleanupStatus,
-      r.ok ? 'Removed — HashGG can no longer reach that VPS'
-           : (r.error || 'Could not remove it. You can delete the hashgg-setup user yourself.'),
-      r.ok ? 'ok' : 'err');
+    if (r.ok) { els.btcCleanupWarn.style.display = 'none'; return; }
+    els.btcCleanupWarn.style.display = 'block';
+    setBtcStatus(els.btcCleanupStatus, r.error || '', 'err');
   } catch (err) {
+    els.btcCleanupWarn.style.display = 'block';
     setBtcStatus(els.btcCleanupStatus, err.message, 'err');
   }
 }

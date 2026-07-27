@@ -202,7 +202,7 @@
             <div id="btc-vps-script" style="display:none;">
               <p class="hint">Run this on <strong><span id="btc-vps-target"></span></strong> as
               root. It creates a restricted user for HashGG and opens the port.</p>
-              <pre id="btc-vps-setup-script" class="script-pre"></pre>
+              <div class="script-box"><pre id="btc-vps-setup-script" class="script-pre"></pre></div>
               <div class="actions">
                 <button id="btn-btc-copy-setup" class="btn btn-secondary btn-sm">Copy</button>
                 <span id="btc-copy-setup-feedback" class="copy-feedback" style="display:none;">Copied!</span>
@@ -552,7 +552,7 @@
       <h2>Setting up your VPS…</h2>
       <p>HashGG is installing and configuring StartTunnel for you. This takes a minute or two —
       you can leave this open.</p>
-      <pre id="btc-setup-log" class="script-pre" style="max-height:11rem;"></pre>
+      <div class="script-box" style="max-height:11rem;"><pre id="btc-setup-log" class="script-pre"></pre></div>
       <p id="btc-setup-status" class="test-status"></p>
       <div class="actions">
         <button id="btn-btc-wiz-retry" class="btn btn-primary" style="display:none;">Try again</button>
@@ -579,15 +579,21 @@
     <div id="screen-btc-startos" class="screen" style="display:none;">
       <h2>Step 4 of 4 — One command on StartOS</h2>
       <div class="hint-box">
-        Your VPS is ready. This last step runs on <strong>StartOS itself</strong>, not on the
-        VPS — a different machine, so a different terminal window.
+        <p><strong>Your VPS is ready.</strong> This last step runs on <strong>StartOS
+        itself</strong> — a different machine from the VPS.</p>
+        <p><strong>Close the terminal window you were using</strong> (type <code>exit</code> and
+        press Enter, or just close it) and <strong>open a fresh one</strong>. Using the old one
+        would run these commands on the VPS, where they do not belong.</p>
       </div>
-      <p>Connect to your StartOS server:</p>
+      <p>In the new window, connect to your StartOS server:</p>
       <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
         <div class="code-hint" id="btc-startos-ssh" style="flex:1;margin:0;">ssh start9@your-server.local</div>
         <button id="btn-btc-copy-sos" class="btn btn-secondary btn-sm">Copy</button>
         <span id="btc-copy-sos-feedback" class="copy-feedback" style="display:none;">Copied!</span>
       </div>
+      <p class="hint" id="btc-startos-ssh-note">Replace <code>your-server</code> with your own
+      server's name — the one in the address you use to reach StartOS, usually two words with a
+      hyphen, like <code>quiet-otter</code>.</p>
       <p>Then paste this:</p>
       <div class="script-box">
         <pre id="btc-block-b" class="script-pre"></pre>
@@ -626,11 +632,14 @@
         <span id="btc-recheck-status" class="test-status"></span>
       </div>
 
-      <p class="hint">HashGG kept a way in to your VPS just for this setup. It is not needed any
-      more, and the tunnel keeps working without it.</p>
-      <div class="actions">
-        <button id="btn-btc-startos-cleanup" class="btn btn-secondary">Remove HashGG's access to the VPS</button>
-        <span id="btc-cleanup-status" class="test-status"></span>
+      <div id="btc-cleanup-warn" class="warn-box" style="display:none;">
+        <p><strong>One thing did not finish.</strong> HashGG needed a way in to your VPS to set
+        it up, and could not remove it again afterwards. Your tunnel is working, but that access
+        should not be left in place.</p>
+        <div class="actions">
+          <button id="btn-btc-startos-cleanup" class="btn btn-secondary btn-sm">Try again</button>
+          <span id="btc-cleanup-status" class="test-status"></span>
+        </div>
       </div>
 
       <div class="actions">
