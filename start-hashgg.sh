@@ -698,6 +698,9 @@ write_compose() {
     fi
     say "      DATUM_STRATUM_PORT: \"$sport\""
     say "      # Used by the Bitcoin clearnet-inbound feature; harmless otherwise."
+    say "      # BITCOIN_CONF is the file this script already located, passed on so"
+    say "      # HashGG can name it exactly rather than saying \"your bitcoin.conf\"."
+    say "      BITCOIN_CONF: \"${BITCOIN_CONF:-}\""
     say "      BITCOIN_P2P_HOST: host.docker.internal"
     say "      BITCOIN_P2P_PORT: \"8333\""
     say "      HASHGG_PLATFORM: docker"

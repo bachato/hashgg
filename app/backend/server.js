@@ -362,6 +362,9 @@ async function handleApi(req, res) {
       // The stratum VPS, offered as a one-click shortcut. Only the address —
       // enough to label the button, nothing the UI does not need.
       stratum_vps_host: s.vps_host || null,
+      // Where the node's configuration file is, when whatever started HashGG
+      // knew. Turns "add this to your bitcoin.conf" into a specific file.
+      bitcoin_conf: process.env.BITCOIN_CONF || null,
       // Re-validated at render: this string is copied into the user's node
       // configuration, and a stored value could predate a validation change.
       public_endpoint: (s.btc_p2p_vps_host && s.btc_p2p_enabled && isValidHost(s.btc_p2p_vps_host))

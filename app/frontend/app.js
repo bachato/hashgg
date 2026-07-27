@@ -1042,6 +1042,25 @@ const BTC_PASTE_INSTRUCTIONS = {
   docker: 'Add the line to your <code>bitcoin.conf</code> and restart Bitcoin.',
 };
 
+// "Add it to your bitcoin.conf" asks the reader to find a file whose location
+// depends on their operating system and how they started Bitcoin. Whatever
+// launched HashGG usually knows the answer already, so use it.
+function btcPasteInstructions(d) {
+  if (d.platform === 'umbrel') return BTC_PASTE_INSTRUCTIONS.umbrel;
+  if (d.bitcoin_conf) {
+    return 'Open this file in a text editor, add the line at the end on its own line, and save:'
+      + `<div class="code-hint" style="margin:0.5rem 0;">${d.bitcoin_conf}</div>`
+      + 'If a line starting <code>externalip=</code> is already there, replace it. '
+      + 'Then <strong>quit Bitcoin and start it again</strong> — it only reads this file at '
+      + 'startup.';
+  }
+  return 'Add the line to your <code>bitcoin.conf</code>, on its own line, then '
+       + '<strong>quit Bitcoin and start it again</strong> — it only reads that file at '
+       + 'startup. It usually lives in <code>~/.bitcoin/</code> on Linux, '
+       + '<code>~/Library/Application Support/Bitcoin/</code> on a Mac, or '
+       + '<code>%APPDATA%\\Bitcoin\\</code> on Windows.';
+}
+
 async function refreshBtcStatus() {
   try {
     btcState = await api('GET', '/btc/status');
@@ -1137,7 +1156,7 @@ function renderBtc(d) {
     `ufw allow ${port}/tcp comment "HashGG bitcoin p2p"   # or: firewall-cmd --permanent --add-port=${port}/tcp && firewall-cmd --reload`;
 
   // Step 3 — the line, and where it goes
-  els.btcWhereToPaste.innerHTML = BTC_PASTE_INSTRUCTIONS[d.platform] || BTC_PASTE_INSTRUCTIONS.docker;
+  els.btcWhereToPaste.innerHTML = btcPasteInstructions(d);
   els.btcExternalipLine.textContent = d.public_endpoint ? `externalip=${d.public_endpoint}` : '—';
   els.btcAckState.textContent = d.acked ? 'Added' : '';
   els.btcAckState.className = 'test-status' + (d.acked ? ' ok' : '');
