@@ -89,6 +89,12 @@ const els = {
   btnBtcVerify: document.getElementById('btn-btc-verify'),
   btcVerifyStatus: document.getElementById('btc-verify-status'),
   btcAdvertising: document.getElementById('btc-advertising'),
+  btcStepAdvertise: document.getElementById('btc-step-advertise'),
+  btcStepCheck: document.getElementById('btc-step-check'),
+  btcFirewallHelp: document.getElementById('btc-firewall-help'),
+  btcDoneBanner: document.getElementById('btc-done-banner'),
+  btcDoneBannerEndpoint: document.getElementById('btc-done-banner-endpoint'),
+  btcDoneBannerNote: document.getElementById('btc-done-banner-note'),
   btcStaleWarning: document.getElementById('btc-stale-warning'),
   btcRemotePort: document.getElementById('btc-remote-port'),
   btcTargetHost: document.getElementById('btc-target-host'),
@@ -1055,7 +1061,7 @@ function renderBtc(d) {
     d.tunnel_status, d.last_error,
     d.public_endpoint, d.acked, d.verified_at, d.advertising, d.inbound_peers,
     d.advertised_stale, d.verified_endpoint, d.vps_host, d.stratum_vps_host,
-    d.detected && d.detected.user_agent]);
+    d.verified_at, d.inbound_peers, d.detected && d.detected.user_agent]);
   if (sig === lastBtcSig) return;
   lastBtcSig = sig;
 
@@ -1115,10 +1121,27 @@ function renderBtc(d) {
     els.btcTunnelErr.textContent = '';
   }
 
-  // Step 2 — firewall one-liner
   const port = d.remote_port || 8333;
   els.btcFirewallCmd.textContent =
     `ufw allow ${port}/tcp comment "HashGG bitcoin p2p"   # or: firewall-cmd --permanent --add-port=${port}/tcp && firewall-cmd --reload`;
+
+  // One step at a time. The config line is only meaningful once the tunnel is
+  // carrying traffic, and checking before the line is in place only produces a
+  // failure the user then has to interpret.
+  const tunnelUp = d.tunnel_status === 'connected';
+  els.btcStepAdvertise.style.display = tunnelUp ? 'list-item' : 'none';
+  els.btcStepCheck.style.display = (tunnelUp && d.acked) ? 'list-item' : 'none';
+
+  // Finished. Say so unmistakably, and stop showing the steps that got them here.
+  const finished = !!d.verified_at && tunnelUp;
+  els.btcDoneBanner.style.display = finished ? 'block' : 'none';
+  if (finished) {
+    els.btcDoneBannerEndpoint.textContent = d.public_endpoint || '';
+    const peers = (typeof d.inbound_peers === 'number')
+      ? `${d.inbound_peers} other node${d.inbound_peers === 1 ? '' : 's'} connected so far.`
+      : 'Other nodes will start connecting on their own, usually within a few hours.';
+    els.btcDoneBannerNote.textContent = peers;
+  }
 
   // Step 3 — the line, and where it goes
   els.btcWhereToPaste.innerHTML = BTC_PASTE_INSTRUCTIONS[d.platform] || BTC_PASTE_INSTRUCTIONS.docker;
@@ -1294,8 +1317,10 @@ async function btcVerify() {
       setBtcStatus(els.btcVerifyStatus,
         `Reachable — ${shortAgent(r.user_agent)} answered`, 'ok');
       if (r.warning) setBtcStatus(els.btcVerifyStatus, r.warning, 'err');
+      els.btcFirewallHelp.style.display = 'none';
     } else {
       setBtcStatus(els.btcVerifyStatus, verifyHint(r.error), 'err');
+      els.btcFirewallHelp.style.display = 'block';
     }
     lastBtcSig = null;
     await refreshBtcStatus();

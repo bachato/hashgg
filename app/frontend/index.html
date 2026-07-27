@@ -232,18 +232,7 @@
                 <p id="btc-tunnel-err" class="btc-err" style="display:none;"></p>
               </li>
 
-              <li>
-                <div class="btc-step-head"><strong>Open the port on your VPS</strong></div>
-                <p class="hint">Run this on your VPS as root. Skip it if you already re-ran the setup script.</p>
-                <div style="display:flex;align-items:center;gap:0.5rem;">
-                  <div class="code-hint" id="btc-firewall-cmd" style="flex:1;margin:0;"></div>
-                  <button id="btn-btc-copy-firewall" class="btn btn-secondary btn-sm">Copy</button>
-                  <span id="btc-copy-fw-feedback" class="copy-feedback" style="display:none;">Copied!</span>
-                </div>
-                <p class="hint">If your provider has its own firewall panel, allow the port there too.</p>
-              </li>
-
-              <li>
+              <li id="btc-step-advertise" style="display:none;">
                 <div class="btc-step-head"><strong>Tell your node to advertise it</strong></div>
                 <p id="btc-where-to-paste" class="hint"></p>
                 <div style="display:flex;align-items:center;gap:0.5rem;">
@@ -258,15 +247,36 @@
                 </div>
               </li>
 
-              <li>
+              <li id="btc-step-check" style="display:none;">
                 <div class="btc-step-head"><strong>Check it worked</strong></div>
                 <div class="actions">
-                  <button id="btn-btc-verify" class="btn btn-primary btn-sm">Verify</button>
+                  <button id="btn-btc-verify" class="btn btn-primary btn-sm">Check it now</button>
                   <span id="btc-verify-status" class="test-status"></span>
                 </div>
                 <p id="btc-advertising" class="hint" style="display:none;"></p>
+
+                <div id="btc-firewall-help" class="warn-box" style="display:none;">
+                  <p><strong>If that did not work, the port is probably closed on your VPS.</strong>
+                  Connect to it and run this:</p>
+                  <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <div class="code-hint" id="btc-firewall-cmd" style="flex:1;margin:0;"></div>
+                    <button id="btn-btc-copy-firewall" class="btn btn-secondary btn-sm">Copy</button>
+                    <span id="btc-copy-fw-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+                  </div>
+                  <p class="hint">If your VPS provider has its own firewall page, allow the same
+                  port there too.</p>
+                </div>
               </li>
             </ol>
+
+            <!-- Reached the end. Plain text saying "reachable" reads as one more
+                 instruction, which is how the StartOS ending failed. -->
+            <div id="btc-done-banner" class="btc-success" style="display:none;padding:1rem 0 0.5rem;">
+              <div class="btc-success-mark">✓</div>
+              <p><strong>Your node is reachable from the internet.</strong></p>
+              <p class="btc-success-endpoint" id="btc-done-banner-endpoint">—</p>
+              <p class="hint" id="btc-done-banner-note"></p>
+            </div>
 
             <div id="btc-stale-warning" class="hint-box" style="display:none;"></div>
 
