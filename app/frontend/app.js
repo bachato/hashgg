@@ -1155,7 +1155,7 @@ function renderBtcGuidance(d) {
   // live signal, and a timestamp says how much to trust it without asking the
   // reader to parse a tense.
   els.btcSummaryNote.textContent = d.verified_endpoint
-    ? `· Already done! Your node is reachable at ${d.verified_endpoint}`
+    ? `· Already done! Reachable at ${d.verified_endpoint}`
       + `${d.verified_at ? ` · checked ${relAge(d.verified_at)}` : ''}`
     : (d.detected ? `· ${shortAgent(d.detected.user_agent)} found` : '');
 
