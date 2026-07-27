@@ -44,21 +44,21 @@ x86:
 	@rm -f docker-images/aarch64.tar
 	ARCH=x86_64 $(MAKE)
 
-docker-images/aarch64.tar: Dockerfile docker_entrypoint.sh check-tunnel.sh check-datum.sh $(APP_FILES) icon.png INSTRUCTIONS.md
+docker-images/aarch64.tar: Dockerfile docker_entrypoint.sh check-tunnel.sh check-datum.sh $(APP_FILES) icon.png instructions.md
 ifeq ($(ARCH),x86_64)
 else
 	mkdir -p docker-images
 	docker buildx build --tag start9/$(PKG_ID)/main:$(PKG_VERSION) --build-arg ARCH=aarch64 --build-arg PLATFORM=arm64 --platform=linux/arm64 -o type=docker,dest=docker-images/aarch64.tar .
 endif
 
-docker-images/x86_64.tar: Dockerfile docker_entrypoint.sh check-tunnel.sh check-datum.sh $(APP_FILES) icon.png INSTRUCTIONS.md
+docker-images/x86_64.tar: Dockerfile docker_entrypoint.sh check-tunnel.sh check-datum.sh $(APP_FILES) icon.png instructions.md
 ifeq ($(ARCH),aarch64)
 else
 	mkdir -p docker-images
 	docker buildx build --tag start9/$(PKG_ID)/main:$(PKG_VERSION) --build-arg ARCH=x86_64 --build-arg PLATFORM=amd64 --platform=linux/amd64 -o type=docker,dest=docker-images/x86_64.tar .
 endif
 
-$(PKG_ID).s9pk: manifest.yaml INSTRUCTIONS.md icon.png LICENSE scripts/embassy.js docker-images/aarch64.tar docker-images/x86_64.tar
+$(PKG_ID).s9pk: manifest.yaml instructions.md icon.png LICENSE scripts/embassy.js docker-images/aarch64.tar docker-images/x86_64.tar
 ifeq ($(ARCH),aarch64)
 	@echo "start-sdk: Preparing aarch64 package ..."
 else ifeq ($(ARCH),x86_64)
