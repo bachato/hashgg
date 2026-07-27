@@ -313,117 +313,16 @@
           <!-- STATE C: platform can't do this, or does it natively -->
           <div id="btc-guidance" style="display:none;"></div>
 
-          <!-- STATE D: StartOS 0.4.0 — generated setup blocks -->
+          <!-- STATE D: StartOS 0.4.0 — launches the wizard. The steps used to
+               live here and grew the page downward past the point anyone could
+               tell where they were. -->
           <div id="btc-startos" style="display:none;">
-            <ol class="btc-steps">
-              <li>
-                <div class="btc-step-head"><strong>Log in to your new VPS</strong></div>
-                <p class="hint">On BTCVPS, once the payment confirms, open <strong>Servers</strong>
-                and click <strong>Manage</strong> next to your new server. That page shows its
-                <strong>IP address</strong> and <strong>root password</strong>.</p>
-                <div class="advanced-grid">
-                  <div class="form-group">
-                    <label class="form-label" for="btc-vps-ip">Your VPS IP address</label>
-                    <input type="text" id="btc-vps-ip" class="form-input" placeholder="e.g. 203.0.113.9" autocomplete="off" spellcheck="false">
-                  </div>
-                </div>
-                <div class="actions">
-                  <button id="btn-btc-ip-continue" class="btn btn-primary btn-sm">Continue</button>
-                  <span id="btc-ip-status" class="test-status"></span>
-                </div>
-
-                <!-- Revealed once the address checks out. Showing the rest up front
-                     presents five steps at once to someone who has not started. -->
-                <div id="btc-ssh-block" style="display:none;">
-                  <p class="hint">Open a terminal — <strong>Command Prompt</strong> on Windows,
-                  <strong>Terminal</strong> on macOS or Linux — and run this:</p>
-                  <div style="display:flex;align-items:center;gap:0.5rem;">
-                    <div class="code-hint" id="btc-ssh-cmd" style="flex:1;margin:0;">ssh root@…</div>
-                    <button id="btn-btc-copy-ssh" class="btn btn-secondary btn-sm">Copy</button>
-                    <span id="btc-copy-ssh-feedback" class="copy-feedback" style="display:none;">Copied!</span>
-                  </div>
-                  <p class="hint">The first time, it asks whether you trust the server — type
-                  <code>yes</code>. Then it asks for the root password from the Manage page.
-                  <strong>Nothing appears as you type or paste the password</strong> — that is
-                  normal, just press Enter.</p>
-                </div>
-              </li>
-
-              <li id="btc-step-a" style="display:none;">
-                <div class="btc-step-head"><strong>Paste this into your new VPS</strong></div>
-                <p class="hint">Paste the whole thing into that same terminal and press Enter.
-                It checks the machine over first and stops if anything is wrong.</p>
-                <pre id="btc-block-a" class="script-pre">Loading…</pre>
-                <div class="actions">
-                  <button id="btn-btc-copy-a" class="btn btn-secondary btn-sm">Copy</button>
-                  <span id="btc-copy-a-feedback" class="copy-feedback" style="display:none;">Copied!</span>
-                </div>
-                <p class="hint">It finishes with <strong>Done</strong> in a few seconds. That is
-                all you have to do on the VPS — come back here for the rest.</p>
-                <details class="btc-sub">
-                  <summary>It stopped with a message instead</summary>
-                  <p class="hint">Any message beginning <code>!!</code> says what to do. Nothing
-                  is left half-configured, so it is always safe to run it again with:</p>
-                  <div class="code-hint">bash /root/hashgg-bootstrap.sh</div>
-                  <p class="hint">If your connection closed on its own, wait a minute, run the
-                  <code>ssh</code> command from the previous step again, then that one.</p>
-                </details>
-              </li>
-
-              <li id="btc-step-config" style="display:none;">
-                <div class="btc-step-head"><strong>Let HashGG set up the VPS</strong></div>
-                <p class="hint">This installs and configures StartTunnel on your VPS. It takes a
-                minute or two — you can leave this page open and watch.</p>
-                <div class="actions">
-                  <button id="btn-btc-run-setup" class="btn btn-primary btn-sm">Set up my VPS</button>
-                  <span id="btc-setup-status" class="test-status"></span>
-                </div>
-                <pre id="btc-setup-log" class="script-pre" style="display:none;max-height:9rem;"></pre>
-
-                <details class="btc-sub" id="btc-manual-fallback">
-                  <summary>Do it myself instead</summary>
-                  <p class="hint">If the automatic setup will not complete, run
-                  <code>sudo /usr/local/sbin/hashgg-starttunnel-setup setup</code> on the VPS and
-                  paste everything between the two <code>HASHGG_CONFIG</code> lines here.</p>
-                  <textarea id="btc-wg-config" class="form-input btc-textarea" rows="8"
-                    placeholder="[Interface]&#10;Address = ...&#10;PrivateKey = ...&#10;&#10;[Peer]&#10;..."
-                    spellcheck="false"></textarea>
-                  <div class="actions">
-                    <button id="btn-btc-make-b" class="btn btn-secondary btn-sm">Continue</button>
-                    <span id="btc-b-status" class="test-status"></span>
-                  </div>
-                </details>
-              </li>
-
-              <li id="btc-step-b" style="display:none;">
-                <div class="btc-step-head"><strong>Paste this into StartOS</strong></div>
-                <p class="hint">In a terminal on your StartOS server —
-                <code>ssh start9@your-server.local</code>. This registers the gateway and
-                switches on the public address.</p>
-                <pre id="btc-block-b" class="script-pre"></pre>
-                <div class="actions">
-                  <button id="btn-btc-copy-b" class="btn btn-secondary btn-sm">Copy</button>
-                  <span id="btc-copy-b-feedback" class="copy-feedback" style="display:none;">Copied!</span>
-                </div>
-              </li>
-
-              <li id="btc-step-verify" style="display:none;">
-                <div class="btc-step-head"><strong>Check it worked</strong></div>
-                <p class="hint">Paste the <code>HASHGG_VERIFY</code> line it printed.</p>
-                <div style="display:flex;align-items:center;gap:0.5rem;">
-                  <input type="text" id="btc-verify-line" class="form-input" placeholder="HASHGG_VERIFY 203.0.113.7:8333" autocomplete="off" spellcheck="false">
-                  <button id="btn-btc-startos-verify" class="btn btn-primary btn-sm">Verify</button>
-                </div>
-                <p id="btc-startos-verify-status" class="test-status"></p>
-                <div id="btc-cleanup-row" class="actions" style="display:none;">
-                  <button id="btn-btc-startos-cleanup" class="btn btn-secondary btn-sm">Remove HashGG's access to the VPS</button>
-                  <span id="btc-cleanup-status" class="test-status"></span>
-                </div>
-                <p class="hint">HashGG keeps a way in to your VPS only for this setup. Once it is
-                working you can take that away — the tunnel keeps running without it.</p>
-              </li>
-            </ol>
+            <div class="actions">
+              <button id="btn-btc-wiz-launch" class="btn btn-primary">Set this up</button>
+              <span id="btc-wiz-launch-note" class="test-status"></span>
+            </div>
           </div>
+
         </div>
       </details>
 
@@ -517,6 +416,219 @@
       <div class="actions">
         <button id="btn-vps-instructions-continue" class="btn btn-primary">Continue →</button>
         <button id="btn-vps-instructions-back" class="btn btn-secondary">← Back</button>
+      </div>
+    </div>
+
+    <!-- ─── Bitcoin reachability wizard (StartOS 0.4.0) ────────────────────────
+         A wizard rather than an inline checklist. The steps are linear, done
+         once, and each is a different kind of work — buy a machine, log into it,
+         wait, then run commands somewhere else entirely. Stacked on one page
+         they extended it downward until finishing a step looked like more of the
+         same and people could not tell they had succeeded. These are NEW screens
+         alongside the mining ones; nothing about that path changes. -->
+
+    <div id="screen-btc-intro" class="screen" style="display:none;">
+      <h2>Make your Bitcoin node reachable</h2>
+      <p>Right now your node can reach out to the Bitcoin network, but nothing can reach in.
+      This gives it a public address so other nodes can connect to it — without exposing your
+      home internet connection.</p>
+
+      <div class="hint-box">
+        <p><strong>Check this first — you may not need any of it.</strong></p>
+        <p>Many home internet connections can already accept incoming connections. If yours
+        can, StartOS will do the whole thing for you and <strong>you can stop here</strong> — no
+        VPS, nothing to buy.</p>
+        <p>Open your <strong>Bitcoin Knots</strong> service, go to <strong>Interfaces →
+        Peer</strong>, and see whether a <strong>public IP address</strong> is listed. If one is,
+        switch it on — StartOS will ask your router to open the port, and often that is all it
+        takes.</p>
+        <p>If your router refuses, the only way on from there is setting up
+        <strong>port forwarding</strong> in the router's own settings by hand. That differs on
+        every router, and this setup avoids it completely.</p>
+        <p class="hint">Either way: using your own connection shows your home IP address to the
+        nodes that connect to you. This route hides it. Neither is wrong.</p>
+      </div>
+
+      <p class="hint">Four steps, about ten minutes, most of it waiting.</p>
+      <div class="actions">
+        <button id="btn-btc-wiz-start" class="btn btn-primary">Continue</button>
+        <button class="btn btn-secondary btc-wiz-exit">Cancel</button>
+      </div>
+    </div>
+
+    <div id="screen-btc-vps" class="screen" style="display:none;">
+      <h2>Step 1 of 4 — Get a VPS</h2>
+      <p>Your node needs a public address, and this is where it comes from: a small rented
+      Linux machine, separate from the one carrying your mining tunnel.</p>
+      <p><strong>Get a blank one — you do not set anything up on it.</strong> HashGG installs and
+      configures everything for you in a moment.</p>
+
+      <div class="step-list">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <strong>Open the €6/month plan</strong><br>
+            <span class="step-desc">This link goes straight to the right one. The site's own
+            pricing page highlights the €12 plan, but €6 is plenty — it includes 4&nbsp;TB of
+            transfer a month.</span><br>
+            <a href="https://btcvps.com/new-server/VPS2?months=1" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="margin-top:0.5rem;display:inline-block;">Open BTCVPS ↗</a>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <strong>Choose <em>Debian</em> and place the order</strong><br>
+            <span class="step-desc">Debian specifically — Ubuntu will not work. Only an email
+            address is needed. For privacy, pay with non-KYC Bitcoin.</span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <strong>Open <em>Servers</em> → <em>Manage</em></strong><br>
+            <span class="step-desc">That page shows the new server's IP address and root
+            password. You need both on the next screen.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="btn-btc-wiz-to-login" class="btn btn-primary">I have a VPS →</button>
+        <button class="btn btn-secondary btc-wiz-back" data-back="btc-intro">← Back</button>
+      </div>
+    </div>
+
+    <div id="screen-btc-login" class="screen" style="display:none;">
+      <h2>Step 2 of 4 — Log in to it</h2>
+      <div class="form-group">
+        <label class="form-label" for="btc-vps-ip">Your VPS IP address</label>
+        <input type="text" id="btc-vps-ip" class="form-input" placeholder="e.g. 203.0.113.9" autocomplete="off" spellcheck="false">
+        <span id="btc-ip-status" class="test-status"></span>
+      </div>
+
+      <div id="btc-login-rest" style="display:none;">
+        <p>Open a terminal — <strong>Command Prompt</strong> on Windows, <strong>Terminal</strong>
+        on macOS or Linux — and run this:</p>
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+          <div class="code-hint" id="btc-ssh-cmd" style="flex:1;margin:0;">ssh root@…</div>
+          <button id="btn-btc-copy-ssh" class="btn btn-secondary btn-sm">Copy</button>
+          <span id="btc-copy-ssh-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+        </div>
+        <div class="hint-box">
+          The first time, it asks whether you trust the server — type <code>yes</code>. Then it
+          asks for the root password from the Manage page.
+          <strong>Nothing appears as you type or paste the password</strong> — that is normal,
+          just press Enter.
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="btn-btc-wiz-to-paste" class="btn btn-primary">I'm logged in →</button>
+        <button class="btn btn-secondary btc-wiz-back" data-back="btc-vps">← Back</button>
+      </div>
+    </div>
+
+    <div id="screen-btc-paste" class="screen" style="display:none;">
+      <h2>Step 3 of 4 — Paste this into the VPS</h2>
+      <p>Paste the whole thing into that terminal and press Enter. It takes a few seconds and
+      ends by telling you to come back here.</p>
+      <div class="script-box">
+        <pre id="btc-block-a" class="script-pre">Loading…</pre>
+      </div>
+      <div class="actions">
+        <button id="btn-btc-copy-a" class="btn btn-secondary btn-sm">Copy</button>
+        <span id="btc-copy-a-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+      </div>
+      <p class="hint">If it stops with a message starting <code>!!</code>, that message says what
+      to do. Running it again is always safe.</p>
+      <div class="actions">
+        <button id="btn-btc-wiz-run" class="btn btn-primary">I've run it →</button>
+        <button class="btn btn-secondary btc-wiz-back" data-back="btc-login">← Back</button>
+      </div>
+    </div>
+
+    <div id="screen-btc-working" class="screen" style="display:none;">
+      <h2>Setting up your VPS…</h2>
+      <p>HashGG is installing and configuring StartTunnel for you. This takes a minute or two —
+      you can leave this open.</p>
+      <pre id="btc-setup-log" class="script-pre" style="max-height:11rem;"></pre>
+      <p id="btc-setup-status" class="test-status"></p>
+      <div class="actions">
+        <button id="btn-btc-wiz-retry" class="btn btn-primary" style="display:none;">Try again</button>
+        <button id="btn-btc-wiz-manual" class="btn btn-secondary" style="display:none;">Do it myself instead</button>
+        <button class="btn btn-secondary btc-wiz-back" data-back="btc-paste" style="display:none;">← Back</button>
+      </div>
+    </div>
+
+    <div id="screen-btc-manual" class="screen" style="display:none;">
+      <h2>Set the VPS up yourself</h2>
+      <p>On the VPS, run this:</p>
+      <div class="code-hint">sudo /usr/local/sbin/hashgg-starttunnel-setup setup</div>
+      <p>Then paste everything between the two <code>HASHGG_CONFIG</code> lines here:</p>
+      <textarea id="btc-wg-config" class="form-input btc-textarea" rows="9"
+        placeholder="[Interface]&#10;Address = ...&#10;PrivateKey = ...&#10;&#10;[Peer]&#10;..."
+        spellcheck="false"></textarea>
+      <div class="actions">
+        <button id="btn-btc-make-b" class="btn btn-primary">Continue →</button>
+        <span id="btc-b-status" class="test-status"></span>
+        <button class="btn btn-secondary btc-wiz-back" data-back="btc-working">← Back</button>
+      </div>
+    </div>
+
+    <div id="screen-btc-startos" class="screen" style="display:none;">
+      <h2>Step 4 of 4 — One command on StartOS</h2>
+      <div class="hint-box">
+        Your VPS is ready. This last step runs on <strong>StartOS itself</strong>, not on the
+        VPS — a different machine, so a different terminal window.
+      </div>
+      <p>Connect to your StartOS server:</p>
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+        <div class="code-hint" id="btc-startos-ssh" style="flex:1;margin:0;">ssh start9@your-server.local</div>
+        <button id="btn-btc-copy-sos" class="btn btn-secondary btn-sm">Copy</button>
+        <span id="btc-copy-sos-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+      </div>
+      <p>Then paste this:</p>
+      <div class="script-box">
+        <pre id="btc-block-b" class="script-pre"></pre>
+      </div>
+      <div class="actions">
+        <button id="btn-btc-copy-b" class="btn btn-secondary btn-sm">Copy</button>
+        <span id="btc-copy-b-feedback" class="copy-feedback" style="display:none;">Copied!</span>
+      </div>
+      <p>It finishes by printing a line starting <code>HASHGG_VERIFY</code>. Paste that here:</p>
+      <div style="display:flex;align-items:center;gap:0.5rem;">
+        <input type="text" id="btc-verify-line" class="form-input" placeholder="HASHGG_VERIFY 203.0.113.7:8333" autocomplete="off" spellcheck="false">
+        <button id="btn-btc-startos-verify" class="btn btn-primary">Check it</button>
+      </div>
+      <p id="btc-startos-verify-status" class="test-status"></p>
+      <div class="actions">
+        <button class="btn btn-secondary btc-wiz-exit">Finish later</button>
+      </div>
+    </div>
+
+    <div id="screen-btc-done" class="screen" style="display:none;">
+      <div class="btc-success">
+        <div class="btc-success-mark">✓</div>
+        <h2>Your node is on clearnet</h2>
+        <p class="btc-success-endpoint" id="btc-done-endpoint">—</p>
+        <p id="btc-done-agent" class="hint"></p>
+      </div>
+
+      <div class="hint-box">
+        <p><strong>Nothing else to do.</strong> StartOS opened the port and told your node to
+        advertise it. Other nodes will start connecting on their own — usually within a few
+        hours, sometimes sooner.</p>
+      </div>
+
+      <p class="hint">HashGG kept a way in to your VPS just for this setup. It is not needed any
+      more, and the tunnel keeps working without it.</p>
+      <div class="actions">
+        <button id="btn-btc-startos-cleanup" class="btn btn-secondary">Remove HashGG's access to the VPS</button>
+        <span id="btc-cleanup-status" class="test-status"></span>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary btc-wiz-exit">Done</button>
       </div>
     </div>
 

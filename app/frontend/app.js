@@ -15,6 +15,16 @@ const screens = {
   'vps-key': document.getElementById('screen-vps-key'),
   'vps-configure': document.getElementById('screen-vps-configure'),
   'vps-connecting': document.getElementById('screen-vps-connecting'),
+  // Bitcoin reachability wizard. Additive: the mining screens above and the
+  // router itself are untouched.
+  'btc-intro': document.getElementById('screen-btc-intro'),
+  'btc-vps': document.getElementById('screen-btc-vps'),
+  'btc-login': document.getElementById('screen-btc-login'),
+  'btc-paste': document.getElementById('screen-btc-paste'),
+  'btc-working': document.getElementById('screen-btc-working'),
+  'btc-manual': document.getElementById('screen-btc-manual'),
+  'btc-startos': document.getElementById('screen-btc-startos'),
+  'btc-done': document.getElementById('screen-btc-done'),
 };
 
 const els = {
@@ -88,19 +98,26 @@ const els = {
   btcCleanupNote: document.getElementById('btc-cleanup-note'),
   // StartOS 0.4.0 guided flow
   btcStartos: document.getElementById('btc-startos'),
+  btnBtcWizLaunch: document.getElementById('btn-btc-wiz-launch'),
+  btnBtcWizStart: document.getElementById('btn-btc-wiz-start'),
+  btnBtcWizToLogin: document.getElementById('btn-btc-wiz-to-login'),
+  btnBtcWizToPaste: document.getElementById('btn-btc-wiz-to-paste'),
+  btnBtcWizRun: document.getElementById('btn-btc-wiz-run'),
+  btnBtcWizRetry: document.getElementById('btn-btc-wiz-retry'),
+  btnBtcWizManual: document.getElementById('btn-btc-wiz-manual'),
+  btcLoginRest: document.getElementById('btc-login-rest'),
+  btcStartosSsh: document.getElementById('btc-startos-ssh'),
+  btnBtcCopySos: document.getElementById('btn-btc-copy-sos'),
+  btcCopySosFeedback: document.getElementById('btc-copy-sos-feedback'),
+  btcDoneEndpoint: document.getElementById('btc-done-endpoint'),
+  btcDoneAgent: document.getElementById('btc-done-agent'),
   btcVpsIp: document.getElementById('btc-vps-ip'),
   btcSshCmd: document.getElementById('btc-ssh-cmd'),
   btnBtcCopySsh: document.getElementById('btn-btc-copy-ssh'),
   btcCopySshFeedback: document.getElementById('btc-copy-ssh-feedback'),
-  btnBtcIpContinue: document.getElementById('btn-btc-ip-continue'),
   btcIpStatus: document.getElementById('btc-ip-status'),
-  btcSshBlock: document.getElementById('btc-ssh-block'),
-  btcStepA: document.getElementById('btc-step-a'),
-  btcStepConfig: document.getElementById('btc-step-config'),
-  btnBtcRunSetup: document.getElementById('btn-btc-run-setup'),
   btcSetupStatus: document.getElementById('btc-setup-status'),
   btcSetupLog: document.getElementById('btc-setup-log'),
-  btcCleanupRow: document.getElementById('btc-cleanup-row'),
   btnBtcStartosCleanup: document.getElementById('btn-btc-startos-cleanup'),
   btcCleanupStatus: document.getElementById('btc-cleanup-status'),
   btcBlockA: document.getElementById('btc-block-a'),
@@ -109,11 +126,9 @@ const els = {
   btcWgConfig: document.getElementById('btc-wg-config'),
   btnBtcMakeB: document.getElementById('btn-btc-make-b'),
   btcBStatus: document.getElementById('btc-b-status'),
-  btcStepB: document.getElementById('btc-step-b'),
   btcBlockB: document.getElementById('btc-block-b'),
   btnBtcCopyB: document.getElementById('btn-btc-copy-b'),
   btcCopyBFeedback: document.getElementById('btc-copy-b-feedback'),
-  btcStepVerify: document.getElementById('btc-step-verify'),
   btcVerifyLine: document.getElementById('btc-verify-line'),
   btnBtcStartosVerify: document.getElementById('btn-btc-startos-verify'),
   btcStartosVerifyStatus: document.getElementById('btc-startos-verify-status'),
@@ -1383,7 +1398,33 @@ els.btnBtcVpsReset.addEventListener('click', btcVpsReset);
 els.btnBtcCopySetup.addEventListener('click', () =>
   copyText(els.btcVpsSetupScript.textContent, els.btcCopySetupFeedback, els.btnBtcCopySetup));
 
-// --- StartOS 0.4.0: the generated setup blocks ------------------------------
+// --- Bitcoin reachability wizard (StartOS 0.4.0) ---------------------------
+//
+// A wizard, not an inline checklist. The steps are linear, done once, and each
+// is a different kind of work — buy a machine, log into it, wait, then run
+// commands on a different machine entirely. Stacked on one page they extended it
+// downward until finishing a step looked like more of the same, and people could
+// not tell they had succeeded.
+
+let btcWizReturn = 'dashboard';
+
+function btcWizGo(name) { showScreen(name); window.scrollTo(0, 0); }
+
+function btcWizLaunch() {
+  btcWizReturn = currentScreen || 'dashboard';
+  // Already finished? Go straight to the result rather than making someone walk
+  // the whole thing again to see it.
+  if (btcState && btcState.verified_endpoint) { btcShowDone(btcState.verified_endpoint, btcState.verified_agent); return; }
+  btcWizGo('btc-intro');
+}
+
+function btcShowDone(endpoint, agent) {
+  els.btcDoneEndpoint.textContent = endpoint || '—';
+  els.btcDoneAgent.textContent = agent ? `${shortAgent(agent)} answered from the internet.` : '';
+  btcWizGo('btc-done');
+}
+
+// --- the generated blocks ---
 
 let btcBlockALoaded = false;
 
@@ -1405,12 +1446,9 @@ async function makeBlockB() {
   try {
     const r = await api('POST', '/btc/startos/block-b', { wg_config: cfg });
     els.btcBlockB.textContent = r.script;
-    els.btcStepB.style.display = 'list-item';
-    els.btcStepVerify.style.display = 'list-item';
     setBtcStatus(els.btcBStatus, '', '');
+    btcWizGo('btc-startos');
   } catch (err) {
-    // Validation failures are the interesting case: the message explains what
-    // was wrong with the paste, not that "something failed".
     setBtcStatus(els.btcBStatus, err.message, 'err');
   }
 }
@@ -1421,21 +1459,20 @@ async function startosVerify() {
   setBtcStatus(els.btcStartosVerifyStatus, 'Checking from the internet…', '');
   try {
     const r = await api('POST', '/btc/startos/verify', { line });
-    if (r.ok) {
-      setBtcStatus(els.btcStartosVerifyStatus,
-        `Reachable at ${r.host}:${r.port} — ${shortAgent(r.user_agent)} answered. Your node is on clearnet.`, 'ok');
+    if (r.ok && !r.warning) {
+      lastBtcSig = null;
+      await refreshBtcStatus();
+      btcShowDone(`${r.host}:${r.port}`, r.user_agent);
     } else {
-      setBtcStatus(els.btcStartosVerifyStatus, verifyHint(r.error), 'err');
+      setBtcStatus(els.btcStartosVerifyStatus, r.warning || verifyHint(r.error), 'err');
     }
   } catch (err) {
     setBtcStatus(els.btcStartosVerifyStatus, err.message, 'err');
   }
 }
 
-// The address is only ever used to build the login command shown here — HashGG
-// never connects to this VPS itself on the StartOS path, it only generates.
-// Same idea as the stratum wizard: take the address once, hand back something
-// that can be copied rather than typed.
+// --- the address, and the login command built from it ---
+
 function updateBtcSshCmd() {
   const ip = els.btcVpsIp.value.trim();
   els.btcSshCmd.textContent = ip ? `ssh root@${ip}` : 'ssh root@…';
@@ -1443,8 +1480,7 @@ function updateBtcSshCmd() {
 
 // Catch here what would otherwise fail much later and less clearly. A private
 // address is the common mistake — someone reads their own LAN address off the
-// wrong page — and Block A's pre-flight refuses that machine anyway, so saying
-// so now saves a wasted round trip through a script and a VPS.
+// wrong page — and the VPS pre-flight refuses that machine anyway.
 function btcIpProblem(raw) {
   const v = String(raw || '').trim();
   if (!v) return 'Enter the IP address from the Manage page.';
@@ -1453,9 +1489,9 @@ function btcIpProblem(raw) {
   }
   if (/^[\d.]+$/.test(v)) {
     const parts = v.split('.');
-    const bad = parts.length !== 4
-      || parts.some((n) => !/^\d{1,3}$/.test(n) || Number(n) > 255);
-    if (bad) return 'That does not look like an IP address.';
+    if (parts.length !== 4 || parts.some((n) => !/^\d{1,3}$/.test(n) || Number(n) > 255)) {
+      return 'That does not look like an IP address.';
+    }
     if (/^10\./.test(v) || /^192\.168\./.test(v) || /^172\.(1[6-9]|2\d|3[01])\./.test(v)
         || /^127\./.test(v) || /^169\.254\./.test(v)
         || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(v)) {
@@ -1466,72 +1502,57 @@ function btcIpProblem(raw) {
   return null;
 }
 
-function btcIpContinue() {
-  const problem = btcIpProblem(els.btcVpsIp.value);
-  if (problem) {
-    setBtcStatus(els.btcIpStatus, problem, 'err');
-    return;
-  }
-  setBtcStatus(els.btcIpStatus, '', '');
-  updateBtcSshCmd();
-  els.btcSshBlock.style.display = 'block';
-  els.btcStepA.style.display = 'list-item';
-  els.btcStepConfig.style.display = 'list-item';
-}
-
 els.btcVpsIp.addEventListener('input', () => {
   updateBtcSshCmd();
-  setBtcStatus(els.btcIpStatus, '', '');   // clear a stale complaint as they retype
+  setBtcStatus(els.btcIpStatus, '', '');
+  els.btcLoginRest.style.display = btcIpProblem(els.btcVpsIp.value) ? 'none' : 'block';
 });
-els.btcVpsIp.addEventListener('keydown', (e) => { if (e.key === 'Enter') btcIpContinue(); });
-els.btnBtcIpContinue.addEventListener('click', btcIpContinue);
-els.btnBtcCopySsh.addEventListener('click', () =>
-  copyText(els.btcSshCmd.textContent, els.btcCopySshFeedback, els.btnBtcCopySsh));
 
-// --- HashGG runs the VPS setup itself ---------------------------------------
+// --- HashGG runs the VPS setup itself ---
 //
-// The slow, failure-prone half of this flow now belongs to software. A first
-// install pulls packages over a new VPS's network, which takes minutes and
-// fails in ways that want a retry rather than a paragraph of instructions —
-// and the people this feature exists for should not have to read shell output
-// to find out what went wrong.
+// The slow, failure-prone half now belongs to software. A first install pulls
+// packages over a new VPS's network: minutes, and failures that want a retry
+// rather than a paragraph of instructions.
 
 let btcSetupPoll = null;
+
+function btcSetupControls(show) {
+  els.btnBtcWizRetry.style.display = show ? 'inline-block' : 'none';
+  els.btnBtcWizManual.style.display = show ? 'inline-block' : 'none';
+  document.querySelectorAll('#screen-btc-working .btc-wiz-back')
+    .forEach((b) => { b.style.display = show ? 'inline-block' : 'none'; });
+}
 
 async function pollBtcSetup() {
   try {
     const r = await api('GET', '/btc/startos/setup-status');
-    if (r.lines && r.lines.length) {
-      els.btcSetupLog.style.display = 'block';
-      els.btcSetupLog.textContent = r.lines.join('\n');
-    }
+    if (r.lines && r.lines.length) els.btcSetupLog.textContent = r.lines.join('\n');
     if (r.state === 'running') return;
 
     clearInterval(btcSetupPoll); btcSetupPoll = null;
-    els.btnBtcRunSetup.disabled = false;
 
     if (r.state === 'done' && r.script) {
-      setBtcStatus(els.btcSetupStatus, 'Your VPS is ready', 'ok');
       els.btcBlockB.textContent = r.script;
-      els.btcStepB.style.display = 'list-item';
-      els.btcStepVerify.style.display = 'list-item';
-      els.btcCleanupRow.style.display = 'flex';
+      setBtcStatus(els.btcSetupStatus, '', '');
+      btcWizGo('btc-startos');
     } else {
       setBtcStatus(els.btcSetupStatus, r.error || 'The setup did not finish.', 'err');
+      btcSetupControls(true);
     }
   } catch (err) {
     clearInterval(btcSetupPoll); btcSetupPoll = null;
-    els.btnBtcRunSetup.disabled = false;
     setBtcStatus(els.btcSetupStatus, err.message, 'err');
+    btcSetupControls(true);
   }
 }
 
 async function btcRunSetup() {
   const host = els.btcVpsIp.value.trim();
-  if (btcIpProblem(host)) { setBtcStatus(els.btcSetupStatus, btcIpProblem(host), 'err'); return; }
-  els.btnBtcRunSetup.disabled = true;
-  els.btcSetupLog.style.display = 'none';
+  const problem = btcIpProblem(host);
+  btcWizGo('btc-working');
+  btcSetupControls(false);
   els.btcSetupLog.textContent = '';
+  if (problem) { setBtcStatus(els.btcSetupStatus, problem, 'err'); btcSetupControls(true); return; }
   setBtcStatus(els.btcSetupStatus, 'Working…', '');
   try {
     await api('POST', '/btc/startos/setup', { host });
@@ -1539,8 +1560,8 @@ async function btcRunSetup() {
     btcSetupPoll = setInterval(pollBtcSetup, 1500);
     pollBtcSetup();
   } catch (err) {
-    els.btnBtcRunSetup.disabled = false;
     setBtcStatus(els.btcSetupStatus, err.message, 'err');
+    btcSetupControls(true);
   }
 }
 
@@ -1550,15 +1571,49 @@ async function btcStartosCleanup() {
     const r = await api('POST', '/btc/startos/cleanup', {});
     setBtcStatus(els.btcCleanupStatus,
       r.ok ? 'Removed — HashGG can no longer reach that VPS'
-           : (r.error || 'Could not remove it; you can delete the hashgg-setup user yourself.'),
+           : (r.error || 'Could not remove it. You can delete the hashgg-setup user yourself.'),
       r.ok ? 'ok' : 'err');
   } catch (err) {
     setBtcStatus(els.btcCleanupStatus, err.message, 'err');
   }
 }
 
-els.btnBtcRunSetup.addEventListener('click', btcRunSetup);
+// --- navigation ---
+
+els.btnBtcWizLaunch.addEventListener('click', btcWizLaunch);
+els.btnBtcWizStart.addEventListener('click', () => btcWizGo('btc-vps'));
+els.btnBtcWizToLogin.addEventListener('click', () => btcWizGo('btc-login'));
+els.btnBtcWizToPaste.addEventListener('click', () => {
+  const problem = btcIpProblem(els.btcVpsIp.value);
+  if (problem) { setBtcStatus(els.btcIpStatus, problem, 'err'); return; }
+  loadBlockA();
+  btcWizGo('btc-paste');
+});
+els.btnBtcWizRun.addEventListener('click', btcRunSetup);
+els.btnBtcWizRetry.addEventListener('click', btcRunSetup);
+els.btnBtcWizManual.addEventListener('click', () => btcWizGo('btc-manual'));
+els.btnBtcMakeB.addEventListener('click', makeBlockB);
+els.btnBtcStartosVerify.addEventListener('click', startosVerify);
 els.btnBtcStartosCleanup.addEventListener('click', btcStartosCleanup);
+
+document.querySelectorAll('.btc-wiz-back').forEach((b) =>
+  b.addEventListener('click', () => btcWizGo(b.dataset.back)));
+document.querySelectorAll('.btc-wiz-exit').forEach((b) =>
+  b.addEventListener('click', () => {
+    if (btcSetupPoll) { clearInterval(btcSetupPoll); btcSetupPoll = null; }
+    btcWizGo(btcWizReturn || 'dashboard');
+  }));
+
+els.btnBtcCopyA.addEventListener('click', () =>
+  copyText(els.btcBlockA.textContent, els.btcCopyAFeedback, els.btnBtcCopyA));
+els.btnBtcCopyB.addEventListener('click', () =>
+  copyText(els.btcBlockB.textContent, els.btcCopyBFeedback, els.btnBtcCopyB));
+els.btnBtcCopySsh.addEventListener('click', () =>
+  copyText(els.btcSshCmd.textContent, els.btcCopySshFeedback, els.btnBtcCopySsh));
+els.btnBtcCopySos.addEventListener('click', () =>
+  copyText(els.btcStartosSsh.textContent, els.btcCopySosFeedback, els.btnBtcCopySos));
+
+
 
 els.btnBtcMakeB.addEventListener('click', makeBlockB);
 els.btnBtcStartosVerify.addEventListener('click', startosVerify);

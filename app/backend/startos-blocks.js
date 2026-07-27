@@ -283,13 +283,19 @@ if [ -z "$ADDR" ]; then
   echo "!! Could not find the tunnel address. Is the gateway connected?"
 else
   start-cli package host bitcoind binding peer set-address-enabled --address "$ADDR" --enabled true ${peerInternalPort}
+  VERIFY_LINE="HASHGG_VERIFY $(printf '%s' "$ADDR" | python3 -c 'import json,sys; a=json.load(sys.stdin); print(str(a["hostname"]) + ":" + str(a["port"]))')"
+  clear 2>/dev/null || printf '\\033[2J\\033[H'
   echo ""
-  echo "Done. StartOS will open the port and tell your node to advertise it."
+  echo "  =================================================="
   echo ""
-  echo "Copy this line back into HashGG:"
-  # Plain double quotes: this python is already inside shell single quotes, so
-  # escaping them produces literal backslashes and a SyntaxError.
-  echo "HASHGG_VERIFY $(printf '%s' "$ADDR" | python3 -c 'import json,sys; a=json.load(sys.stdin); print(str(a["hostname"]) + ":" + str(a["port"]))')"
+  echo "     Your node is now reachable from the internet."
+  echo ""
+  echo "     Copy this line back into HashGG:"
+  echo ""
+  echo "     $VERIFY_LINE"
+  echo ""
+  echo "  =================================================="
+  echo ""
 fi
 `;
 }

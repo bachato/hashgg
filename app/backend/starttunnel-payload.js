@@ -271,9 +271,16 @@ grep -qE '^[[:space:]]*Include[[:space:]]+/etc/ssh/sshd_config\\.d/' /etc/ssh/ss
 sshd -t 2>/dev/null || { rm -f ${SSHD_DROPIN}; die "The SSH configuration change was rejected. Nothing was left in place."; }
 systemctl reload ssh >/dev/null 2>&1 || systemctl reload sshd >/dev/null 2>&1 || true
 
+clear 2>/dev/null || printf '\\033[2J\\033[H'
 echo ""
-echo "=== Done ==="
-echo "   Go back to HashGG — it takes it from here."
+echo "  =================================================="
+echo ""
+echo "     This VPS is ready."
+echo ""
+echo "     Go back to HashGG and click Continue."
+echo ""
+echo "  =================================================="
+echo ""
 HASHGG_BOOTSTRAP_EOF
 bash /root/hashgg-bootstrap.sh
 `;
