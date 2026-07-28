@@ -801,7 +801,8 @@ async function handleApi(req, res) {
     // reach the same machine by typing its address under "a different VPS".
     const shared = !!(s.btc_p2p_vps_host && s.vps_host && s.btc_p2p_vps_host === s.vps_host);
     sendJson(res, 200, {
-      script: buildTeardownScript([s.btc_p2p_remote_port || 8333], s.btc_p2p_vps_host, shared),
+      script: buildTeardownScript([s.btc_p2p_remote_port || 8333], s.btc_p2p_vps_host, shared,
+        s.btc_p2p_vps_public_key || s.vps_ssh_public_key),
       host: s.btc_p2p_vps_host || null,
       shared_with_stratum: shared,
     });
@@ -1023,7 +1024,7 @@ async function handleApi(req, res) {
       const p = s.btc_p2p_remote_port || 8333;
       if (!ports.includes(p)) ports.push(p);
     }
-    const script = buildTeardownScript(ports, s.vps_host);
+    const script = buildTeardownScript(ports, s.vps_host, false, s.vps_ssh_public_key);
     sendJson(res, 200, { script });
     return;
   }
@@ -1369,8 +1370,50 @@ usermod -d "$SSH_HOME" "$SSH_USER" 2>/dev/null || true
 usermod -s /usr/sbin/nologin "$SSH_USER" 2>/dev/null || true
 
 # --- Set up home dir and SSH authorized_keys ---
+#
+# APPEND, never overwrite. Every HashGG installation mints its own keypair, so a
+# second machine pointed at this same VPS used to replace the first machine's
+# key. The already-authenticated tunnel kept working and then failed at its next
+# reconnect, which puts the cause on one machine and the effect on another, hours
+# apart. Each installation therefore owns exactly one line, identified by a tag
+# derived from its own key.
 mkdir -p "$SSH_HOME/.ssh"
-echo "$HASHGG_PUBKEY" > "$SSH_HOME/.ssh/authorized_keys"
+AUTH_KEYS="$SSH_HOME/.ssh/authorized_keys"
+touch "$AUTH_KEYS"
+
+# The tag is a hash of the key itself: stable, unique per installation, and
+# needing nothing stored anywhere to stay in step.
+HASHGG_TAG="hashgg-$(printf '%s' "$HASHGG_PUBKEY" | awk '{printf "%s", $2}' | sha256sum | cut -c1-8)"
+TAGGED_LINE="$HASHGG_PUBKEY $HASHGG_TAG"
+KEY_BODY="$(printf '%s' "$HASHGG_PUBKEY" | awk '{print $2}')"
+
+# Upgrade path. Installations that predate tagging have an untagged line here.
+# If it is OURS, adopt it in place. If it is someone else's, leave it strictly
+# alone -- removing it is the exact harm this change exists to prevent.
+NEW_KEYS="$(mktemp)"
+ADOPTED=""
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  case "$line" in '#'*) echo "$line" >> "$NEW_KEYS"; continue ;; esac
+  line_body="$(printf '%s' "$line" | awk '{print $2}')"
+  line_last="$(printf '%s' "$line" | awk '{print $NF}')"
+  line_tag=""
+  case "$line_last" in hashgg-*) line_tag="$line_last" ;; esac
+  if [ "$line_body" = "$KEY_BODY" ]; then
+    # Ours, tagged or not. Drop it here and re-add the tagged form below.
+    [ -z "$line_tag" ] && ADOPTED="yes"
+    continue
+  fi
+  if [ "$line_tag" = "$HASHGG_TAG" ]; then continue; fi
+  echo "$line" >> "$NEW_KEYS"
+done < "$AUTH_KEYS"
+echo "$TAGGED_LINE" >> "$NEW_KEYS"
+OTHERS=$(( $(grep -c . "$NEW_KEYS") - 1 ))
+cat "$NEW_KEYS" > "$AUTH_KEYS"
+rm -f "$NEW_KEYS"
+
+[ -n "$ADOPTED" ] && echo "Adopted this machine's existing key"
+[ "$OTHERS" -gt 0 ] && echo "Note: $OTHERS other HashGG installation(s) also use this VPS — left untouched"
 # Critical: sshd StrictModes requires these exact ownerships and permissions
 chown -R "$SSH_USER:$SSH_USER" "$SSH_HOME" 2>/dev/null || chown -R "$SSH_USER" "$SSH_HOME"
 chmod 755 "$SSH_HOME"
@@ -1467,8 +1510,13 @@ echo "Return to HashGG and click Test Connection."
 // mining tunnel. The full teardown deletes the `hashgg` user and the sshd
 // drop-in, which on a shared machine takes the mining tunnel down with it — and
 // the wrong-host guard cannot catch that, because it IS the right host.
-function buildTeardownScript(ports, targetHost, portsOnly = false) {
+function buildTeardownScript(ports, targetHost, portsOnly = false, publicKey = '') {
   const portList = (Array.isArray(ports) ? ports : [ports]).filter(Boolean).join(' ');
+  // Identifies our own key line, so teardown removes that and nothing else.
+  const keyBody = String(publicKey || '').trim().split(/\s+/)[1] || '';
+  const tag = keyBody
+    ? 'hashgg-' + require('crypto').createHash('sha256').update(keyBody).digest('hex').slice(0, 8)
+    : '';
   if (portsOnly) {
     return `#!/bin/bash
 # Best-effort cleanup — keep going even if individual steps fail.
@@ -1506,6 +1554,7 @@ SSH_USER="hashgg"
 SSH_HOME="/home/hashgg"
 SSHD_CONF_DIR="/etc/ssh/sshd_config.d"
 CONF_FILE="$SSHD_CONF_DIR/hashgg.conf"
+HASHGG_TAG="${tag}"
 STRATUM_PORTS="${portList}"
 EXPECTED_HOST="${targetHost || ''}"
 
@@ -1524,24 +1573,44 @@ if [ -n "$EXPECTED_HOST" ] && command -v ip >/dev/null 2>&1; then
   fi
 fi
 
-# --- Remove the sshd drop-in config ---
-if [ -f "$CONF_FILE" ]; then
-  rm -f "$CONF_FILE"
-  echo "Removed $CONF_FILE"
-else
-  echo "No HashGG sshd config found (already removed)"
+# --- Remove this installation's key, and the user only if nobody else is using it ---
+#
+# A VPS can carry more than one HashGG installation, and sharing one is a
+# configuration we actively suggest. Removing the account outright would revoke
+# every other machine's access at the same time, which is the same failure the
+# setup script's append behaviour exists to prevent.
+AUTH_KEYS="$SSH_HOME/.ssh/authorized_keys"
+REMAINING=0
+if [ -f "$AUTH_KEYS" ] && [ -n "$HASHGG_TAG" ]; then
+  KEPT="$(mktemp)"
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    line_last="$(printf '%s' "$line" | awk '{print $NF}')"
+    [ "$line_last" = "$HASHGG_TAG" ] && continue
+    echo "$line" >> "$KEPT"
+  done < "$AUTH_KEYS"
+  REMAINING=$(grep -c . "$KEPT" 2>/dev/null || echo 0)
+  cat "$KEPT" > "$AUTH_KEYS"
+  rm -f "$KEPT"
+  echo "Removed this installation's key"
 fi
 
-# --- Remove the hashgg user, its home, and authorized_keys ---
-if id "$SSH_USER" &>/dev/null; then
-  # Terminate any lingering sessions/processes owned by the user first
-  pkill -KILL -u "$SSH_USER" 2>/dev/null || true
-  userdel -r "$SSH_USER" 2>/dev/null || userdel "$SSH_USER" 2>/dev/null || true
-  echo "Removed user $SSH_USER"
+if [ "$REMAINING" -gt 0 ]; then
+  echo ""
+  echo "$REMAINING other HashGG installation(s) still use this VPS."
+  echo "Its access has been left in place for them."
 else
-  echo "User $SSH_USER not present (already removed)"
+  # The sshd drop-in is shared, so it goes only when the account does.
+  if [ -f "$CONF_FILE" ]; then rm -f "$CONF_FILE"; echo "Removed $CONF_FILE"; fi
+  if id "$SSH_USER" &>/dev/null; then
+    pkill -KILL -u "$SSH_USER" 2>/dev/null || true
+    userdel -r "$SSH_USER" 2>/dev/null || userdel "$SSH_USER" 2>/dev/null || true
+    echo "Removed user $SSH_USER"
+  else
+    echo "User $SSH_USER not present (already removed)"
+  fi
+  rm -rf "$SSH_HOME" 2>/dev/null || true
 fi
-rm -rf "$SSH_HOME" 2>/dev/null || true
 
 # --- Validate sshd config, then restart so the change takes effect ---
 if sshd -t 2>/tmp/sshd-test.log; then
