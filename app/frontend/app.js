@@ -1356,8 +1356,11 @@ function renderBtcGuidance(d) {
     // One button per state rather than one that guesses. "Set this up" opening
     // a page that says it is already set up is how it read before.
     const done = !!d.verified_endpoint;
+    els.btcLaunch.style.display = 'flex';
     els.btnBtcWizLaunch.style.display = done ? 'none' : 'inline-block';
     els.btnBtcWizResult.style.display = done ? 'inline-block' : 'none';
+    // Same rule as the other path: offered once there is something to clear.
+    els.btnBtcForget.style.display = (d.vps_host || done) ? 'inline-block' : 'none';
     els.btcGuidance.innerHTML = `
       <p><strong>StartOS can do this itself, and does it better than HashGG could.</strong>
       It keeps each peer's real address, and sets up your node for you.</p>
@@ -1398,6 +1401,7 @@ function renderBtcGuidance(d) {
       <p class="hint">After that, HashGG writes the commands for you, and StartOS opens the port
       and tells your node to advertise it.</p>`;
   } else {
+    els.btcLaunch.style.display = 'none';
     els.btcGuidance.innerHTML = `
       <p>On this version of StartOS, the Bitcoin package rewrites its configuration every time it
       starts and only ever advertises its Tor address. There is no way to tell it about a public
