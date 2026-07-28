@@ -23,6 +23,7 @@
 const state = require('./state');
 const bitcoinP2p = require('./bitcoin-p2p');
 const { SshTunnel } = require('./ssh-tunnel');
+const { friendlySshError } = require('./ssh-errors');
 
 // Its own key file and known_hosts, even though the private key is shared with
 // the stratum record. Two tunnels writing one path could interleave, and more
@@ -64,7 +65,12 @@ class BtcP2pManager {
       },
       onStatus: (status, errorMsg) => {
         const patch = { btc_p2p_tunnel_status: status };
-        if (errorMsg) patch.btc_p2p_last_error = friendlyError(errorMsg, state.get());
+        if (errorMsg) {
+          patch.btc_p2p_last_error = friendlySshError(errorMsg, {
+            port: state.get().btc_p2p_remote_port || 8333,
+            portLabel: 'Advanced',
+          });
+        }
         if (status === 'connected') patch.btc_p2p_last_error = null;
         state.update(patch);
       },
@@ -214,28 +220,4 @@ class BtcP2pManager {
   }
 }
 
-// ssh's own words are precise but unhelpful to a non-technical user. Translate
-// the ones that actually happen; pass anything else through unchanged rather
-// than inventing a guess.
-function friendlyError(raw, s) {
-  const port = (s && s.btc_p2p_remote_port) || 8333;
-  if (/remote port forwarding failed/i.test(raw)) {
-    return `Port ${port} is already in use on your VPS. Free it up, or pick a different port under Advanced.`;
-  }
-  if (/permission denied/i.test(raw)) {
-    return 'The VPS rejected our key. Re-run the setup script on your VPS.';
-  }
-  if (/connection timed out|no route to host|network is unreachable/i.test(raw)) {
-    return 'Could not reach your VPS. Check it is running and its address is correct.';
-  }
-  if (/connection refused/i.test(raw)) {
-    return 'Your VPS refused the SSH connection. Check the SSH port under Advanced.';
-  }
-  if (/host key verification failed/i.test(raw)) {
-    return 'The VPS host key changed. If you rebuilt the VPS, reset this connection and set it up again.';
-  }
-  return raw;
-}
-
 module.exports = new BtcP2pManager();
-module.exports.friendlyError = friendlyError;
