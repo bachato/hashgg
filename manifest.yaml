@@ -1,7 +1,7 @@
 id: hashgg
 title: "HashGG"
-version: 0.7.1.0
-release-notes: "Fixes for running HashGG alongside Bitcoin on macOS, and clearer setup instructions. No change to how the app itself works. Includes 0.7.0: a section that gives your Bitcoin node a public address so other nodes can connect to it — on this version of StartOS the bundled Bitcoin package only ever advertises its Tor address, so the section explains why it cannot be enabled here. StartOS 0.4.0 supports it fully."
+version: 0.7.2.0
+release-notes: "You can now make your Bitcoin node reachable without setting up mining. It is offered on the first screen alongside the tunnel choices, and if you stop there the dashboard treats mining as a choice you have not made rather than something wrong. One VPS can carry both jobs whichever order you set them up in, and a second HashGG installation can share the same server without disturbing the first. Note that on this version of StartOS the bundled Bitcoin package only ever advertises its Tor address, so the reachability section explains why it cannot be enabled here. StartOS 0.4.0 supports it fully."
 license: MIT
 wrapper-repo: "https://github.com/paulscode/hashgg"
 upstream-repo: "https://github.com/playit-cloud/playit-agent"

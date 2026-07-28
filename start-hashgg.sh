@@ -60,7 +60,7 @@ DATUM_CONTAINER_CONF="$STATE_DIR/datum_gateway.container.json"
 #   HASHGG_IMAGE=paulscode/hashgg:latest ./start-hashgg.sh
 # (Note `make docker-build-local` tags from manifest.yaml, which may differ from
 # the tag pinned here — that mismatch is why this is an explicit knob.)
-HASHGG_IMAGE="${HASHGG_IMAGE:-paulscode/hashgg:0.7.1.0}"
+HASHGG_IMAGE="${HASHGG_IMAGE:-paulscode/hashgg:0.7.2.0}"
 HASHGG_UI_PORT="${HASHGG_UI_PORT:-3000}"
 
 # Built locally on macOS from the pinned upstream Datum release.
