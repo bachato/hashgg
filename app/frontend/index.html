@@ -507,14 +507,14 @@
       <p>Your node has a public address, but it does not know that yet. Add this one line to its
       settings:</p>
       <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
-        <div class="code-hint" id="btc-externalip-line" style="flex:1;margin:0;">—</div>
-        <button id="btn-btc-copy-line" class="btn btn-secondary btn-sm">Copy</button>
+        <div class="code-hint" id="btc-externalip-line" style="flex:1;margin:0;"># not ready yet — nothing to copy</div>
+        <button id="btn-btc-copy-line" class="btn btn-secondary btn-sm" style="display:none;">Copy</button>
         <span id="btc-copy-line-feedback" class="copy-feedback" style="display:none;">Copied!</span>
       </div>
       <p id="btc-where-to-paste"></p>
       <p class="hint">Saving restarts your node, which takes about a minute. That is expected.</p>
       <div class="actions">
-        <button id="btn-btc-ack" class="btn btn-primary">I've added it →</button>
+        <button id="btn-btc-ack" class="btn btn-primary" disabled>I've added it →</button>
         <span id="btc-ack-state" class="test-status"></span>
         <button class="btn btn-secondary btc-wiz-exit">Finish later</button>
       </div>

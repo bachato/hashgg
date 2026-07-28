@@ -1303,7 +1303,9 @@ function renderBtc(d) {
     || (d.enabled && d.vps_host ? `${d.vps_host}:${d.remote_port || 8333}` : null);
   els.btcExternalipLine.textContent = advertiseEndpoint
     ? `externalip=${advertiseEndpoint}`
-    : 'Waiting for the tunnel…';
+    : '# not ready yet — nothing to copy';
+  els.btnBtcCopyLine.style.display = advertiseEndpoint ? 'inline-block' : 'none';
+  els.btnBtcAck.disabled = !advertiseEndpoint;
   els.btcAckState.textContent = d.acked ? 'Added' : '';
   els.btcAckState.className = 'test-status' + (d.acked ? ' ok' : '');
 
@@ -1541,10 +1543,11 @@ els.btnBtcAck.addEventListener('click', btcAck);
 els.btnBtcApplyAdvanced.addEventListener('click', btcApplyAdvanced);
 els.btnBtcCopyFirewall.addEventListener('click', () =>
   copyText(els.btcFirewallCmd.textContent, els.btcCopyFwFeedback, els.btnBtcCopyFirewall));
-els.btnBtcCopyLine.addEventListener('click', () =>
-  copyText(els.btcExternalipLine.textContent.startsWith('externalip=')
-    ? els.btcExternalipLine.textContent : '',
-    els.btcCopyLineFeedback, els.btnBtcCopyLine));
+els.btnBtcCopyLine.addEventListener('click', () => {
+  const line = els.btcExternalipLine.textContent;
+  if (!line.startsWith('externalip=')) return;
+  copyText(line, els.btcCopyLineFeedback, els.btnBtcCopyLine);
+});
 
 // --- The P2P endpoint's own VPS -------------------------------------------
 //
