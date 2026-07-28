@@ -1684,6 +1684,10 @@ fi
 # setup script's append behaviour exists to prevent.
 AUTH_KEYS="$SSH_HOME/.ssh/authorized_keys"
 REMAINING=0
+# Whether we can identify our own key at all. Kept separate from the count,
+# because "cannot tell" must never be treated as "nobody else is here".
+TAG_KNOWN=0
+[ -n "$HASHGG_TAG" ] && TAG_KNOWN=1
 if [ -f "$AUTH_KEYS" ] && [ -n "$HASHGG_TAG" ]; then
   KEPT="$(mktemp)"
   while IFS= read -r line; do
@@ -1698,7 +1702,16 @@ if [ -f "$AUTH_KEYS" ] && [ -n "$HASHGG_TAG" ]; then
   echo "Removed this installation's key"
 fi
 
-if [ "$REMAINING" -gt 0 ]; then
+if [ "$TAG_KNOWN" -eq 0 ]; then
+  echo ""
+  echo "This copy of HashGG no longer holds the key it set up here, so it cannot"
+  echo "tell which entry is its own. Nothing has been removed — deleting the"
+  echo "account would cut off any other machine using this VPS."
+  echo ""
+  echo "If this VPS is used by nothing else, you can remove it by hand:"
+  echo "  userdel -r $SSH_USER"
+  echo "  rm -f $CONF_FILE"
+elif [ "$REMAINING" -gt 0 ]; then
   echo ""
   echo "$REMAINING other HashGG installation(s) still use this VPS."
   echo "Its access has been left in place for them."
@@ -1745,7 +1758,14 @@ command -v firewall-cmd &>/dev/null && firewall-cmd --reload --quiet 2>/dev/null
 
 echo ""
 echo "=== Teardown complete! ==="
-echo "HashGG's access and configuration have been removed from this VPS."
+if [ "$TAG_KNOWN" -eq 0 ]; then
+  echo "Nothing was removed — see the note above."
+elif [ "$REMAINING" -gt 0 ]; then
+  echo "This installation's access has been removed. The other $REMAINING can still"
+  echo "reach this VPS, so the hashgg account is still here — that is deliberate."
+else
+  echo "HashGG's access and configuration have been removed from this VPS."
+fi
 `;
 }
 
