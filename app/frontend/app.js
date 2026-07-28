@@ -2015,3 +2015,27 @@ els.btnBtcCopyA.addEventListener('click', () =>
   copyText(els.btcBlockA.textContent, els.btcCopyAFeedback, els.btnBtcCopyA));
 els.btnBtcCopyB.addEventListener('click', () =>
   copyText(els.btcBlockB.textContent, els.btcCopyBFeedback, els.btnBtcCopyB));
+
+
+// The collapsed default, asserted rather than assumed — browsers restore a
+// <details> element's open state across a reload, so without this the section
+// reads differently depending on which browser is being used. It sits under an
+// "advanced" heading and its documented default is closed.
+let btcSectionUserToggled = false;
+if (els.btcSection) {
+  // A real click on the summary, not the `toggle` event: `toggle` also fires
+  // for our own programmatic changes, and it fires asynchronously, so there is
+  // no reliable way to tell the two apart from inside that handler.
+  const btcSummary = els.btcSection.querySelector('summary');
+  if (btcSummary) {
+    btcSummary.addEventListener('click', () => { btcSectionUserToggled = true; });
+  }
+  const collapseOnce = () => {
+    if (!btcSectionUserToggled && !reachabilityAutoOpened) els.btcSection.open = false;
+  };
+  collapseOnce();
+  // Restoration is applied before this script on some browsers and during the
+  // load event on others, so collapse at both moments rather than losing the
+  // race on one of them.
+  window.addEventListener('load', collapseOnce);
+}
