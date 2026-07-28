@@ -1501,21 +1501,26 @@ if [ "$OTHERS" -gt 0 ]; then
   echo ""
   echo "  Note: $OTHERS other HashGG installation(s) already use this VPS."
   echo "  Their access has been left alone."
-  # Ports already answering here will refuse a second forward, and the failure
-  # arrives later as an unexplained tunnel error. Name them now instead.
-  BUSY="$(ss -lntH 2>/dev/null | awk '{print $4}' | sed 's/.*://' | sort -un \
-          | grep -vx 22 | tr '\n' ' ')"
-  if [ -n "$BUSY" ]; then
-    echo ""
-    echo "  Ports already in use here: $BUSY"
-    for p in $STRATUM_PORTS; do
-      case " $BUSY " in
-        *" $p "*)
-          echo "  !! Port $p is one of them. Choose a different port in HashGG,"
-          echo "     or this tunnel will not be able to start." ;;
-      esac
-    done
-  fi
+fi
+
+# Ports already answering here will refuse a second forward, and the failure
+# arrives later as an unexplained tunnel error. Name them now instead.
+BUSY="$(ss -lntH 2>/dev/null | awk '{print $4}' | sed 's/.*://' | sort -un \
+        | grep -vx 22 | tr '\n' ' ')"
+CLASH=""
+for p in $STRATUM_PORTS; do
+  case " $BUSY " in
+    *" $p "*) CLASH="$CLASH $p" ;;
+  esac
+done
+if [ -n "$CLASH" ]; then
+  echo ""
+  for p in $CLASH; do
+    echo "  !! Port $p is already in use on this server, so this tunnel will not"
+    echo "     be able to start. Change it in HashGG and run this again."
+  done
+  echo ""
+  echo "  Ports already in use here: $BUSY"
 fi
 # Critical: sshd StrictModes requires these exact ownerships and permissions
 chown -R "$SSH_USER:$SSH_USER" "$SSH_HOME" 2>/dev/null || chown -R "$SSH_USER" "$SSH_HOME"
