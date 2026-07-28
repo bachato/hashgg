@@ -23,7 +23,7 @@
 const state = require('./state');
 const bitcoinP2p = require('./bitcoin-p2p');
 const { SshTunnel } = require('./ssh-tunnel');
-const { friendlySshError } = require('./ssh-errors');
+const { friendlySshError, isPortCollision, suggestNextPort } = require('./ssh-errors');
 
 // Its own key file and known_hosts, even though the private key is shared with
 // the stratum record. Two tunnels writing one path could interleave, and more
@@ -66,12 +66,14 @@ class BtcP2pManager {
       onStatus: (status, errorMsg) => {
         const patch = { btc_p2p_tunnel_status: status };
         if (errorMsg) {
-          patch.btc_p2p_last_error = friendlySshError(errorMsg, {
-            port: state.get().btc_p2p_remote_port || 8333,
-            portLabel: 'Advanced',
-          });
+          const port = state.get().btc_p2p_remote_port || 8333;
+          patch.btc_p2p_last_error = friendlySshError(errorMsg, { port });
+          patch.btc_p2p_port_suggestion = isPortCollision(errorMsg) ? suggestNextPort(port) : null;
         }
-        if (status === 'connected') patch.btc_p2p_last_error = null;
+        if (status === 'connected') {
+          patch.btc_p2p_last_error = null;
+          patch.btc_p2p_port_suggestion = null;
+        }
         state.update(patch);
       },
     });

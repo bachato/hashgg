@@ -88,6 +88,9 @@ const els = {
   btcDotTunnel: document.getElementById('btc-dot-tunnel'),
   btcTunnelText: document.getElementById('btc-tunnel-text'),
   btcTunnelErr: document.getElementById('btc-tunnel-err'),
+  btcPortFix: document.getElementById('btc-port-fix'),
+  btnBtcPortFix: document.getElementById('btn-btc-port-fix'),
+  btcPortFixStatus: document.getElementById('btc-port-fix-status'),
   btcFirewallCmd: document.getElementById('btc-firewall-cmd'),
   btnBtcCopyFirewall: document.getElementById('btn-btc-copy-firewall'),
   btcCopyFwFeedback: document.getElementById('btc-copy-fw-feedback'),
@@ -1148,6 +1151,15 @@ function renderBtc(d) {
     els.btcTunnelErr.style.display = 'none';
   }
 
+  // A port clash is the one tunnel failure with an obvious next move, so offer
+  // it as a button rather than asking for a number the user cannot choose well.
+  if (d.port_suggestion) {
+    els.btcPortFix.style.display = 'flex';
+    els.btnBtcPortFix.textContent = `Use port ${d.port_suggestion} instead`;
+  } else {
+    els.btcPortFix.style.display = 'none';
+  }
+
   els.btcDoneBanner.style.display = finished ? 'block' : 'none';
   if (finished) {
     els.btcDoneBannerEndpoint.textContent = d.public_endpoint || '';
@@ -1801,6 +1813,19 @@ els.btnBtcWizResult.addEventListener('click', btcWizShowResult);
 els.btnBtcWizAgain.addEventListener('click', () =>
   btcWizGo(btcState && btcState.capability === 'guided' ? 'btc-intro' : 'btc-u-intro'));
 els.btnBtcRecheck.addEventListener('click', btcRecheck);
+
+els.btnBtcPortFix.addEventListener('click', async () => {
+  setBtcStatus(els.btcPortFixStatus, 'Switching…', '');
+  try {
+    const r = await api('POST', '/btc/use-suggested-port', {});
+    setBtcStatus(els.btcPortFixStatus,
+      `Now using port ${r.port}. Re-run the setup script on your VPS so it allows this port.`, 'ok');
+    lastBtcSig = null;
+    await refreshBtcStatus();
+  } catch (err) {
+    setBtcStatus(els.btcPortFixStatus, err.message, 'err');
+  }
+});
 els.btnBtcWizStart.addEventListener('click', () =>
   btcWizGo(btcState && btcState.vps_host ? 'btc-replace' : 'btc-vps'));
 els.btnBtcReplaceDone.addEventListener('click', () => btcWizGo('btc-vps'));

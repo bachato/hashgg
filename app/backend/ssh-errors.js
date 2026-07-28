@@ -16,16 +16,34 @@
  * @param {object} opts    { port, portLabel } — the remote port this tunnel
  *                         asked for, and where the user changes it
  */
+function isPortCollision(raw) {
+  return /remote port forwarding failed/i.test(String(raw || ''));
+}
+
+/**
+ * The next port to try after a collision.
+ *
+ * Deliberately just "the next one up". We cannot see what is free — the VPS
+ * account is command-less by design — so any suggestion is a guess. Guessing
+ * adjacent means a second collision suggests the one after that, and the user
+ * converges on a free port by clicking, without ever being asked to know
+ * anything about ports.
+ */
+function suggestNextPort(port) {
+  const p = Number(port) || 0;
+  if (p < 1024 || p >= 65535) return 23336;
+  return p + 1;
+}
+
 function friendlySshError(raw, opts = {}) {
   const port = opts.port;
-  const where = opts.portLabel || 'Advanced';
 
-  if (/remote port forwarding failed/i.test(raw)) {
+  if (isPortCollision(raw)) {
     // The common cause on a shared VPS: another HashGG installation, or another
-    // service, already holds that port. Say which port, and where to change it.
-    return `Port ${port} is already in use on your VPS. That usually means something else `
-         + `is already using it — another HashGG setup, for instance. Pick a different port `
-         + `under ${where}, or free that one up.`;
+    // service, already holds that port. Name it, and let the UI offer the way out
+    // rather than asking the user to invent a number.
+    return `Port ${port} is already in use on your VPS — something else is already `
+         + `listening there, often another HashGG setup.`;
   }
   if (/permission denied|publickey/i.test(raw)) {
     return 'The VPS rejected our key. Re-run the setup script on your VPS.';
@@ -45,4 +63,4 @@ function friendlySshError(raw, opts = {}) {
   return raw;
 }
 
-module.exports = { friendlySshError };
+module.exports = { friendlySshError, isPortCollision, suggestNextPort };

@@ -7,7 +7,7 @@
 const EventEmitter = require('events');
 const state = require('./state');
 const { SshTunnel } = require('./ssh-tunnel');
-const { friendlySshError } = require('./ssh-errors');
+const { friendlySshError, isPortCollision, suggestNextPort } = require('./ssh-errors');
 
 const KEY_FILE = '/root/data/vps_ssh_key';
 const KNOWN_HOSTS_FILE = '/root/data/vps_known_hosts';
@@ -66,12 +66,14 @@ class VpsManager extends EventEmitter {
         // "remote port forwarding failed for listen port 23335" is not something
         // to hand a miner.
         if (errorMsg) {
-          patch.vps_last_error = friendlySshError(errorMsg, {
-            port: state.get().vps_remote_port || 23335,
-            portLabel: 'Public stratum port',
-          });
+          const port = state.get().vps_remote_port || 23335;
+          patch.vps_last_error = friendlySshError(errorMsg, { port });
+          patch.vps_port_suggestion = isPortCollision(errorMsg) ? suggestNextPort(port) : null;
         }
-        if (status === 'connected') patch.vps_last_error = null;
+        if (status === 'connected') {
+          patch.vps_last_error = null;
+          patch.vps_port_suggestion = null;
+        }
         // Losing the tunnel means the advertised endpoint is no longer valid.
         if (status === 'error' || status === 'disconnected') patch.public_endpoint = null;
         state.update(patch);

@@ -30,6 +30,11 @@ const INITIAL_STATE = {
   vps_tunnel_status: 'disconnected',
   vps_last_error: null,
   vps_host_key_verified: false, // true after first successful connect + key stored
+  // Set when a tunnel fails because its public port is taken. Carries the port
+  // to offer instead, so the UI can hand the user a button rather than asking
+  // them to invent a number they have no way to choose well.
+  vps_port_suggestion: null,
+  btc_p2p_port_suggestion: null,
   // --- Bitcoin P2P clearnet inbound (advanced; independent of tunnel_mode) ---
   // Flat keys, deliberately: load() does a SHALLOW {...freshInitial(), ...stored}
   // merge, so a nested object read from an older state.json would be taken

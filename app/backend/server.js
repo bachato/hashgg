@@ -357,6 +357,7 @@ async function handleApi(req, res) {
       remote_port: s.btc_p2p_remote_port || 8333,
       tunnel_status: s.btc_p2p_tunnel_status || 'disconnected',
       last_error: s.btc_p2p_last_error || null,
+      port_suggestion: s.btc_p2p_port_suggestion || null,
       vps_host: s.btc_p2p_vps_host || null,
       vps_source: s.btc_p2p_vps_source || null,
       // The stratum VPS, offered as a one-click shortcut. Only the address —
@@ -524,6 +525,32 @@ async function handleApi(req, res) {
       }
       sendJson(res, 400, { error: err.message });
     }
+    return;
+  }
+
+  // POST /api/vps/use-suggested-port — one click out of a port collision.
+  //
+  // The alternative was telling the user to "pick a different port", which is
+  // not an instruction someone can follow without knowing which ports are free.
+  if (pathname === '/api/vps/use-suggested-port' && req.method === 'POST') {
+    const s = state.get();
+    const port = s.vps_port_suggestion;
+    if (!port) { sendJson(res, 400, { error: 'No suggestion available.' }); return; }
+    state.update({ vps_remote_port: port, vps_port_suggestion: null, vps_last_error: null });
+    vpsManager.restart();
+    sendJson(res, 200, { ok: true, port });
+    return;
+  }
+
+  // POST /api/btc/use-suggested-port — the same, for the node tunnel.
+  if (pathname === '/api/btc/use-suggested-port' && req.method === 'POST') {
+    const s = state.get();
+    const port = s.btc_p2p_port_suggestion;
+    if (!port) { sendJson(res, 400, { error: 'No suggestion available.' }); return; }
+    state.update({ btc_p2p_remote_port: port, btc_p2p_port_suggestion: null, btc_p2p_last_error: null });
+    btcP2pManager.enable().catch((err) =>
+      console.error(`[btc-p2p] retry on new port failed: ${err.message}`));
+    sendJson(res, 200, { ok: true, port });
     return;
   }
 
@@ -1095,6 +1122,7 @@ async function handleApi(req, res) {
       remote_port: s.vps_remote_port || 23335,
       tunnel_status: s.vps_tunnel_status || 'disconnected',
       last_error: s.vps_last_error || null,
+      port_suggestion: s.vps_port_suggestion || null,
       public_endpoint: s.public_endpoint,
       uptime: vpsManager.getUptime(),
     });
