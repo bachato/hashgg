@@ -528,6 +528,28 @@ async function handleApi(req, res) {
     return;
   }
 
+  // GET /api/datum/status — is Datum answering?
+  //
+  // The dashboard used to assert this was true without checking, which is
+  // harmless while mining is configured (a broken Datum shows up elsewhere) but
+  // not for a reachability-only user, for whom this row is the only thing on
+  // screen saying the mining half is healthy. Actually look.
+  if (pathname === '/api/datum/status' && req.method === 'GET') {
+    const net = require('net');
+    const host = process.env.DATUM_HOST || 'datum.embassy';
+    const port = parseInt(process.env.DATUM_REMOTE_PORT, 10) || 23335;
+    const reachable = await new Promise((resolve) => {
+      const sock = net.createConnection({ host, port });
+      const done = (v) => { try { sock.destroy(); } catch (_) {} resolve(v); };
+      sock.setTimeout(3000);
+      sock.on('connect', () => done(true));
+      sock.on('timeout', () => done(false));
+      sock.on('error', () => done(false));
+    });
+    sendJson(res, 200, { reachable, host, port });
+    return;
+  }
+
   // POST /api/vps/use-suggested-port — one click out of a port collision.
   //
   // The alternative was telling the user to "pick a different port", which is

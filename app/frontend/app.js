@@ -88,6 +88,13 @@ const els = {
   btcDotTunnel: document.getElementById('btc-dot-tunnel'),
   btcTunnelText: document.getElementById('btc-tunnel-text'),
   btcTunnelErr: document.getElementById('btc-tunnel-err'),
+  miningCard: document.getElementById('mining-card'),
+  miningUnset: document.getElementById('mining-unset'),
+  rowTunnel: document.getElementById('row-tunnel'),
+  rowAgent: document.getElementById('row-agent'),
+  btnSetupMining: document.getElementById('btn-setup-mining'),
+  choiceReachability: document.getElementById('choice-reachability'),
+  btnChooseReachability: document.getElementById('btn-choose-reachability'),
   btcPortFix: document.getElementById('btc-port-fix'),
   btnBtcPortFix: document.getElementById('btn-btc-port-fix'),
   btcPortFixStatus: document.getElementById('btc-port-fix-status'),
@@ -350,8 +357,24 @@ async function pollStatus() {
     currentMode = mode;
 
     if (!mode) {
-      // Fresh install — show mode selection
+      // No mining tunnel. That used to mean "not set up", but reachability can
+      // be set up on its own now, so the two have to be told apart: HashGG is
+      // set up if EITHER exists. Inferred rather than stored, so there is no
+      // third source of truth to drift out of step with these two.
+      let btc = null;
+      try { btc = await api('GET', '/btc/status'); } catch (_) {}
+      if (btc && btc.vps_host) {
+        showScreen('dashboard');
+        updateDashboard({}, null);
+        refreshBtcStatus();
+        return;
+      }
+      // Genuinely fresh — offer mining, and reachability where it is possible.
       if (currentScreen !== 'tunnel-choice') showScreen('tunnel-choice');
+      if (els.choiceReachability) {
+        els.choiceReachability.style.display =
+          (btc && btc.capability && btc.capability !== 'unavailable') ? 'block' : 'none';
+      }
       return;
     }
 
@@ -458,7 +481,44 @@ function updateVpsUI(status) {
 
 // ─── Shared dashboard ─────────────────────────────────────────────────────────
 
+// Datum is a dependency on every platform, so it is present and running even
+// for someone who only wants reachability. Showing it healthy is reassurance;
+// leaving it blank would read as something failing to load.
+async function refreshDatumOnly() {
+  try {
+    const d = await api('GET', '/datum/status');
+    const ok = d && d.reachable;
+    els.dotDatum.className = `dot ${ok ? 'dot-green' : 'dot-gray'}`;
+    els.statusDatum.textContent = ok ? 'Ready when you are' : 'Not running';
+  } catch (_) {
+    els.dotDatum.className = 'dot dot-gray';
+    els.statusDatum.textContent = '—';
+  }
+}
+
+let reachabilityAutoOpened = false;
+
 function updateDashboard(status, mode) {
+  // Mining not configured: show a sentence and an action instead of an endpoint
+  // that never arrives, and hide the rows that describe a tunnel there is none
+  // of. Datum stays — it is installed and running, so saying so is reassurance
+  // rather than an alarm.
+  const miningUnset = !mode;
+  els.miningCard.style.display = miningUnset ? 'none' : 'block';
+  els.miningUnset.style.display = miningUnset ? 'block' : 'none';
+  els.rowTunnel.style.display = miningUnset ? 'none' : 'flex';
+  els.rowAgent.style.display = miningUnset ? 'none' : 'flex';
+  els.btnReset.style.display = miningUnset ? 'none' : 'inline-block';
+  if (miningUnset) {
+    if (!reachabilityAutoOpened) {
+      reachabilityAutoOpened = true;
+      const btcSection = document.getElementById('advanced-btc-p2p');
+      if (btcSection) btcSection.open = true;
+    }
+    refreshDatumOnly();
+    return;
+  }
+
   // Endpoint
   if (status.public_endpoint) {
     const endpoint = `stratum+tcp://${status.public_endpoint}`;
@@ -522,9 +582,20 @@ function updateDashboard(status, mode) {
   // Teardown link is vps-only (removes HashGG's config from the VPS).
   els.dashboardTeardownLink.style.display = mode === 'vps' ? 'block' : 'none';
 
-  // Datum — same for both modes
-  els.dotDatum.className = 'dot dot-green';
-  els.statusDatum.textContent = 'Reachable';
+  // Datum — same for both modes. Probed, not assumed.
+  refreshDatumMining();
+}
+
+async function refreshDatumMining() {
+  try {
+    const d = await api('GET', '/datum/status');
+    const ok = d && d.reachable;
+    els.dotDatum.className = `dot ${ok ? 'dot-green' : 'dot-red'}`;
+    els.statusDatum.textContent = ok ? 'Reachable' : 'Not reachable';
+  } catch (_) {
+    els.dotDatum.className = 'dot dot-gray';
+    els.statusDatum.textContent = '—';
+  }
 }
 
 function formatUptime(seconds) {
@@ -1813,6 +1884,14 @@ els.btnBtcWizResult.addEventListener('click', btcWizShowResult);
 els.btnBtcWizAgain.addEventListener('click', () =>
   btcWizGo(btcState && btcState.capability === 'guided' ? 'btc-intro' : 'btc-u-intro'));
 els.btnBtcRecheck.addEventListener('click', btcRecheck);
+
+els.btnSetupMining.addEventListener('click', () => showScreen('tunnel-choice'));
+els.btnChooseReachability.addEventListener('click', () => {
+  // Straight into the reachability wizard. The dashboard it would normally be
+  // launched from does not exist yet for this user.
+  btcWizReturn = 'dashboard';
+  btcWizGo(btcState && btcState.capability === 'guided' ? 'btc-intro' : 'btc-u-intro');
+});
 
 els.btnBtcPortFix.addEventListener('click', async () => {
   setBtcStatus(els.btcPortFixStatus, 'Switching…', '');

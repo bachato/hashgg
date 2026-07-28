@@ -62,7 +62,7 @@
 
     <!-- Dashboard Screen -->
     <div id="screen-dashboard" class="screen" style="display:none;">
-      <div class="endpoint-card">
+      <div id="mining-card" class="endpoint-card">
         <h2>Your Mining Endpoint</h2>
         <div id="endpoint-display" class="endpoint-value">
           <span id="endpoint-text">Waiting for tunnel...</span>
@@ -71,8 +71,19 @@
         <span id="copy-feedback" class="copy-feedback" style="display:none;">Copied!</span>
       </div>
 
+      <!-- Mining not set up. Not a fault, so it must not look like one: a
+           sentence and an action, never an empty slot or a grey dot. -->
+      <div id="mining-unset" class="endpoint-card" style="display:none;">
+        <h2>Mining</h2>
+        <p>Mining is not set up. Your Bitcoin node is reachable, which is the other thing
+        HashGG does.</p>
+        <div class="actions">
+          <button id="btn-setup-mining" class="btn btn-primary">Set up mining</button>
+        </div>
+      </div>
+
       <div class="status-grid">
-        <div class="status-item">
+        <div class="status-item" id="row-tunnel">
           <span id="dot-tunnel" class="dot dot-gray"></span>
           <span class="status-label">Tunnel</span>
           <span id="status-tunnel" class="status-value">—</span>
@@ -82,7 +93,7 @@
           <span class="status-label">Datum Gateway</span>
           <span id="status-datum" class="status-value">—</span>
         </div>
-        <div class="status-item">
+        <div class="status-item" id="row-agent">
           <span id="dot-agent" class="dot dot-gray"></span>
           <span class="status-label">Agent</span>
           <span id="status-agent" class="status-value">—</span>
@@ -264,6 +275,14 @@
             <li>Full control</li>
           </ul>
           <button id="btn-choose-vps" class="btn btn-secondary">Select</button>
+        </div>
+      </div>
+
+      <div id="choice-reachability" class="hint-box" style="display:none;">
+        <p><strong>Just want your Bitcoin node reachable?</strong> You can set that up first and
+        come back to mining whenever you like.</p>
+        <div class="actions">
+          <button id="btn-choose-reachability" class="btn btn-secondary btn-sm">Set up node reachability</button>
         </div>
       </div>
     </div>
