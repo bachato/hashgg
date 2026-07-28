@@ -223,6 +223,10 @@ const els = {
   btnChoosePlayit: document.getElementById('btn-choose-playit'),
   btnChooseVps: document.getElementById('btn-choose-vps'),
   // VPS instructions
+  vpsShare: document.getElementById('vps-share'),
+  vpsShareHost: document.getElementById('vps-share-host'),
+  vpsShareBlocked: document.getElementById('vps-share-blocked'),
+  btnVpsUseShared: document.getElementById('btn-vps-use-shared'),
   btnVpsInstructionsContinue: document.getElementById('btn-vps-instructions-continue'),
   btnVpsInstructionsBack: document.getElementById('btn-vps-instructions-back'),
   // VPS configure (step 1: enter IP)
@@ -623,12 +627,54 @@ els.btnChooseVps.addEventListener('click', async () => {
     await api('POST', '/tunnel/mode', { mode: 'vps' });
     currentMode = 'vps';
     showScreen('vps-instructions');
+    vpsShareOffer();
   } catch (err) {
     showError('Failed to set tunnel mode: ' + err.message);
   }
 });
 
 // ─── Event handlers: VPS instructions ────────────────────────────────────────
+
+// The reverse of the offer on the reachability side: someone who set that up
+// first already has a server, and should not be asked to rent a second one.
+// Withheld on StartOS 0.4.0, where the reachability server runs software that
+// owns its firewall — sharing there does not merely misbehave, it cannot work,
+// so the screen says why rather than offering a button that fails later.
+async function vpsShareOffer() {
+  els.vpsShare.style.display = 'none';
+  els.vpsShareBlocked.style.display = 'none';
+  let btc = null;
+  try { btc = await api('GET', '/btc/status'); } catch (_) { return; }
+  if (!btc || !btc.vps_host) return;
+  if (btc.capability === 'guided') {
+    els.vpsShareBlocked.style.display = 'block';
+    return;
+  }
+  if (btc.capability !== 'full') return;
+  els.vpsShare.style.display = 'block';
+  els.vpsShareHost.textContent = btc.vps_host;
+}
+
+els.btnVpsUseShared.addEventListener('click', async () => {
+  try {
+    const r = await api('POST', '/vps/configure', { source: 'shared' });
+    // Downstream steps read these fields, so fill them from what was adopted
+    // rather than leaving the user's answer to a question we skipped blank.
+    els.inputVpsHost.value = r.host || '';
+    const res = await api('GET', '/vps/setup-script');
+    if (!res.script) { showError('Failed to load setup script'); return; }
+    els.vpsScriptText.textContent = res.script;
+    const sshPort = parseInt(els.inputVpsSshPort.value, 10) || 22;
+    els.vpsSshCmd.textContent = sshPort === 22
+      ? `ssh root@${r.host}` : `ssh -p ${sshPort} root@${r.host}`;
+    els.vpsTestStatus.textContent = '';
+    els.vpsTestStatus.className = 'test-status';
+    // Straight to the script: the server exists, but the mining port on it does
+    // not yet. "You already have this server" reads as "nothing more to do", so
+    // the next screen has to be the one thing that is still left.
+    showScreen('vps-key');
+  } catch (err) { showError(err.message); }
+});
 
 els.btnVpsInstructionsContinue.addEventListener('click', () => {
   showScreen('vps-configure');

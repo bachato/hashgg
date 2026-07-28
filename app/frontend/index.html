@@ -290,6 +290,24 @@
     <!-- VPS Instructions Screen -->
     <div id="screen-vps-instructions" class="screen" style="display:none;">
       <h2>Set up your VPS</h2>
+
+      <div id="vps-share" class="hint-box" style="display:none;">
+        <p><strong>You already have one.</strong> The server keeping your Bitcoin node reachable
+        can carry mining too, at no extra cost.</p>
+        <div class="actions">
+          <button id="btn-vps-use-shared" class="btn btn-primary btn-sm">Use it</button>
+          <span id="vps-share-host" class="hint"></span>
+        </div>
+        <p class="hint" style="margin-top:0.6rem;">There is one short step left on it — HashGG
+        will show you what to paste.</p>
+      </div>
+
+      <div id="vps-share-blocked" class="hint-box" style="display:none;">
+        <p><strong>This needs a different server.</strong> The one carrying your node's
+        connections runs software that takes over that machine's firewall, so nothing else can
+        safely run alongside it. You will need a second server for mining.</p>
+      </div>
+
       <p>We recommend <strong>BTCVPS</strong> — email-only signup, paid in Bitcoin, no personal information required.</p>
 
       <div class="step-list">

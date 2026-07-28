@@ -834,9 +834,17 @@ async function handleApi(req, res) {
       });
       s = state.get();
     }
+    const btcPorts = [s.btc_p2p_remote_port || 8333];
+    if (s.vps_host && s.vps_host === s.btc_p2p_vps_host) {
+      const sp = s.vps_remote_port || 23335;
+      if (!btcPorts.includes(sp)) btcPorts.push(sp);
+      for (const c of (s.extra_connections || [])) {
+        if (c.remote_port && !btcPorts.includes(c.remote_port)) btcPorts.push(c.remote_port);
+      }
+    }
     const script = buildSetupScript(
       s.btc_p2p_vps_public_key || s.vps_ssh_public_key,
-      [s.btc_p2p_remote_port || 8333],
+      btcPorts,
       s.btc_p2p_vps_host
     );
     sendJson(res, 200, { script, host: s.btc_p2p_vps_host || null });
@@ -1081,6 +1089,31 @@ async function handleApi(req, res) {
   // POST /api/vps/configure
   if (pathname === '/api/vps/configure' && req.method === 'POST') {
     const body = await parseBody(req);
+
+    if (body.source === 'shared') {
+      const s0 = state.get();
+      if (!s0.btc_p2p_vps_host) {
+        sendJson(res, 400, { error: 'You do not have a server set up for reachability yet.' });
+        return;
+      }
+      const patch0 = {
+        vps_host: s0.btc_p2p_vps_host,
+        vps_ssh_port: s0.btc_p2p_vps_ssh_port || 22,
+        vps_ssh_user: s0.btc_p2p_vps_ssh_user || 'hashgg',
+      };
+      // One key covering both purposes, so the server carries a single grant and
+      // the user runs a single script. An existing stratum key wins: it may
+      // already be trusted somewhere we cannot see, and replacing it would break
+      // a tunnel nobody asked us to touch.
+      if (!s0.vps_ssh_private_key && s0.btc_p2p_vps_private_key) {
+        patch0.vps_ssh_private_key = s0.btc_p2p_vps_private_key;
+        patch0.vps_ssh_public_key = s0.btc_p2p_vps_public_key || null;
+      }
+      state.update(patch0);
+      sendJson(res, 200, { ok: true, host: patch0.vps_host, source: 'shared' });
+      return;
+    }
+
     const host = body.host;
     const sshPort = body.ssh_port !== undefined ? Number(body.ssh_port) : undefined;
     const sshUser = body.ssh_user;
