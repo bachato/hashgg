@@ -95,6 +95,9 @@ const els = {
   btnSetupMining: document.getElementById('btn-setup-mining'),
   choiceReachability: document.getElementById('choice-reachability'),
   btnChooseReachability: document.getElementById('btn-choose-reachability'),
+  choiceReachabilityOffer: document.getElementById('choice-reachability-offer'),
+  choiceReachabilityActions: document.getElementById('choice-reachability-actions'),
+  choiceReachabilityWhy: document.getElementById('choice-reachability-why'),
   btcPortFix: document.getElementById('btc-port-fix'),
   btnBtcPortFix: document.getElementById('btn-btc-port-fix'),
   btcPortFixStatus: document.getElementById('btc-port-fix-status'),
@@ -377,8 +380,18 @@ async function pollStatus() {
       // Genuinely fresh — offer mining, and reachability where it is possible.
       if (currentScreen !== 'tunnel-choice') showScreen('tunnel-choice');
       if (els.choiceReachability) {
-        els.choiceReachability.style.display =
-          (btc && btc.capability && btc.capability !== 'unavailable') ? 'block' : 'none';
+        const cap = btc && btc.capability;
+        const unavailable = cap === 'unavailable';
+        els.choiceReachability.style.display = cap ? 'block' : 'none';
+        if (els.choiceReachabilityOffer) {
+          els.choiceReachabilityOffer.style.display = unavailable ? 'none' : 'block';
+        }
+        if (els.choiceReachabilityActions) {
+          els.choiceReachabilityActions.style.display = unavailable ? 'none' : 'flex';
+        }
+        if (els.choiceReachabilityWhy) {
+          els.choiceReachabilityWhy.style.display = unavailable ? 'block' : 'none';
+        }
       }
       return;
     }

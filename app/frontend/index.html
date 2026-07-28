@@ -279,10 +279,19 @@
       </div>
 
       <div id="choice-reachability" class="hint-box" style="display:none;">
-        <p><strong>Just want your Bitcoin node reachable?</strong> You can set that up first and
-        come back to mining whenever you like.</p>
-        <div class="actions">
+        <p id="choice-reachability-offer"><strong>Just want your Bitcoin node reachable?</strong>
+        You can set that up first and come back to mining whenever you like.</p>
+        <div class="actions" id="choice-reachability-actions">
           <button id="btn-choose-reachability" class="btn btn-secondary btn-sm">Set up node reachability</button>
+        </div>
+        <div id="choice-reachability-why" style="display:none;">
+          <p><strong>HashGG can also make your Bitcoin node reachable — but not on this version
+          of StartOS.</strong></p>
+          <p>The Bitcoin package here rewrites its configuration every time it starts, and only
+          ever advertises its Tor address. There is no way to tell it about a public address, so
+          HashGG cannot help with this part.</p>
+          <p class="hint">Upgrading to StartOS 0.4.0 enables it. Mining is unaffected — choose a
+          tunnel above and carry on.</p>
         </div>
       </div>
     </div>
