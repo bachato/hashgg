@@ -409,6 +409,7 @@ async function pollStatus() {
 
     // Refresh additional-miner statuses while the dashboard is visible.
     if (currentScreen === 'dashboard') { refreshConnections(); refreshBtcStatus(); }
+    else if (String(currentScreen).startsWith('btc-')) { refreshBtcStatus(); }
   } catch (err) {
     console.error('Poll error:', err);
   }
@@ -1298,7 +1299,11 @@ function renderBtc(d) {
 
   // Step 3 — the line, and where it goes
   els.btcWhereToPaste.innerHTML = btcPasteInstructions(d);
-  els.btcExternalipLine.textContent = d.public_endpoint ? `externalip=${d.public_endpoint}` : '—';
+  const advertiseEndpoint = d.public_endpoint
+    || (d.enabled && d.vps_host ? `${d.vps_host}:${d.remote_port || 8333}` : null);
+  els.btcExternalipLine.textContent = advertiseEndpoint
+    ? `externalip=${advertiseEndpoint}`
+    : 'Waiting for the tunnel…';
   els.btcAckState.textContent = d.acked ? 'Added' : '';
   els.btcAckState.className = 'test-status' + (d.acked ? ' ok' : '');
 
@@ -1537,7 +1542,9 @@ els.btnBtcApplyAdvanced.addEventListener('click', btcApplyAdvanced);
 els.btnBtcCopyFirewall.addEventListener('click', () =>
   copyText(els.btcFirewallCmd.textContent, els.btcCopyFwFeedback, els.btnBtcCopyFirewall));
 els.btnBtcCopyLine.addEventListener('click', () =>
-  copyText(els.btcExternalipLine.textContent, els.btcCopyLineFeedback, els.btnBtcCopyLine));
+  copyText(els.btcExternalipLine.textContent.startsWith('externalip=')
+    ? els.btcExternalipLine.textContent : '',
+    els.btcCopyLineFeedback, els.btnBtcCopyLine));
 
 // --- The P2P endpoint's own VPS -------------------------------------------
 //
