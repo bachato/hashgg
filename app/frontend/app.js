@@ -514,8 +514,6 @@ async function refreshDatumOnly() {
   }
 }
 
-let reachabilityAutoOpened = false;
-
 function updateDashboard(status, mode) {
   // Mining not configured: show a sentence and an action instead of an endpoint
   // that never arrives, and hide the rows that describe a tunnel there is none
@@ -528,11 +526,6 @@ function updateDashboard(status, mode) {
   els.rowAgent.style.display = miningUnset ? 'none' : 'flex';
   els.btnReset.style.display = miningUnset ? 'none' : 'inline-block';
   if (miningUnset) {
-    if (!reachabilityAutoOpened) {
-      reachabilityAutoOpened = true;
-      const btcSection = document.getElementById('advanced-btc-p2p');
-      if (btcSection) btcSection.open = true;
-    }
     refreshDatumOnly();
     return;
   }
@@ -1361,6 +1354,16 @@ function renderBtcGuidance(d) {
     els.btnBtcWizResult.style.display = done ? 'inline-block' : 'none';
     // Same rule as the other path: offered once there is something to clear.
     els.btnBtcForget.style.display = (d.vps_host || done) ? 'inline-block' : 'none';
+    if (done) {
+      els.btcGuidance.innerHTML = `
+        <p><strong>This is set up and working.</strong> StartOS opened the port and told your
+        node to advertise it, so other nodes can reach you at
+        <code>${d.verified_endpoint}</code>.</p>
+        <p class="hint">Nothing here needs your attention. <strong>View details</strong> shows
+        what was checked and when; <strong>Start over</strong> undoes it if you are changing
+        servers.</p>`;
+      return;
+    }
     els.btcGuidance.innerHTML = `
       <p><strong>StartOS can do this itself, and does it better than HashGG could.</strong>
       It keeps each peer's real address, and sets up your node for you.</p>
@@ -2031,7 +2034,7 @@ if (els.btcSection) {
     btcSummary.addEventListener('click', () => { btcSectionUserToggled = true; });
   }
   const collapseOnce = () => {
-    if (!btcSectionUserToggled && !reachabilityAutoOpened) els.btcSection.open = false;
+    if (!btcSectionUserToggled) els.btcSection.open = false;
   };
   collapseOnce();
   // Restoration is applied before this script on some browsers and during the
