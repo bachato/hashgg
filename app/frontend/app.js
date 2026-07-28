@@ -1244,7 +1244,7 @@ function renderBtc(d) {
 
   if (finished) {
     const peers = (typeof d.inbound_peers === 'number') ? ` · ${d.inbound_peers} inbound` : '';
-    els.btcSummaryNote.textContent = `· Already done! Reachable at ${d.public_endpoint}${peers}`;
+    els.btcSummaryNote.textContent = `· Already done! Reachable\u00a0at\u00a0${d.public_endpoint}${peers}`;
   } else if (d.verified_at) {
     els.btcSummaryNote.textContent = `· tunnel ${d.tunnel_status} — not reachable right now`;
   } else {
@@ -1336,13 +1336,14 @@ function renderBtcGuidance(d) {
   // On this path HashGG owns no tunnel, so a completed setup would otherwise
   // leave no trace after a reload — on the longest flow of the three.
   // "verified at <ip>" was read as a status nobody could interpret — is that
-  // working or not? Say plainly that it is on, and carry the age of the check
-  // instead of hedging the verb: StartOS owns the tunnel here, so there is no
-  // live signal, and a timestamp says how much to trust it without asking the
-  // reader to parse a tense.
+  // working or not? So it says plainly that it is on.
+  //
+  // The age of the check belongs with it, since StartOS owns the tunnel here
+  // and there is no live signal to show instead — but not on this line.
+  // Appended here it pushed the summary past the width of the row and wrapped
+  // mid-phrase. It lives in the body now, where there is room for it.
   els.btcSummaryNote.textContent = d.verified_endpoint
-    ? `· Already done! Reachable at ${d.verified_endpoint}`
-      + `${d.verified_at ? ` · checked ${relAge(d.verified_at)}` : ''}`
+    ? `· Already done! Reachable\u00a0at\u00a0${d.verified_endpoint}`
     : (d.detected ? `· ${shortAgent(d.detected.user_agent)} found` : '');
 
   if (d.capability === 'guided') {
@@ -1359,9 +1360,9 @@ function renderBtcGuidance(d) {
         <p><strong>This is set up and working.</strong> StartOS opened the port and told your
         node to advertise it, so other nodes can reach you at
         <code>${d.verified_endpoint}</code>.</p>
-        <p class="hint">Nothing here needs your attention. <strong>View details</strong> shows
-        what was checked and when; <strong>Start over</strong> undoes it if you are changing
-        servers.</p>`;
+        <p class="hint">Last checked ${d.verified_at ? relAge(d.verified_at) : 'recently'}.
+        Nothing here needs your attention — <strong>View details</strong> shows the full result,
+        and <strong>Start over</strong> undoes it if you are changing servers.</p>`;
       return;
     }
     els.btcGuidance.innerHTML = `
