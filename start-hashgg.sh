@@ -880,6 +880,10 @@ cmd_up() {
   fi
   say "  4. start HashGG and give you the dashboard URL"
   say ""
+  say "Datum Gateway is installed either way — it is what HashGG mines with. You"
+  say "do not have to mine: making your node reachable is the other thing HashGG"
+  say "does, and you can set up just that."
+  say ""
   say "Platform: $OS"
   say "State:    $STATE_DIR"
   say ""
@@ -947,8 +951,13 @@ cmd_up() {
     say ""
   fi
 
-  say "Start with Datum Gateway — set your payout address and coinbase tag there"
-  say "first. Then use HashGG to pick a tunnel and get your public endpoint."
+  say "To mine: start with Datum Gateway — set your payout address and coinbase"
+  say "tag there first. Then use HashGG to pick a tunnel and get your public"
+  say "endpoint."
+  say ""
+  say "HashGG can also just make your Bitcoin node reachable from the internet,"
+  say "without mining. That is on the same first screen, and stopping there is a"
+  say "perfectly good place to stop."
   say ""
   say "  ./start-hashgg.sh status    what's running"
   say "  ./start-hashgg.sh logs      follow HashGG's logs ('logs datum' for Datum)"
