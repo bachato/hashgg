@@ -21,6 +21,8 @@ ENV yq_sha256_arm64=4ab0b301059348d671fc1833e99903c1fecc7ca287ac131f72dca0eb9a6b
 ARG ARCH
 ARG PLATFORM
 ARG TARGETARCH
+ARG HASHGG_PLATFORM=""
+ENV HASHGG_PLATFORM=${HASHGG_PLATFORM}
 # Use PLATFORM if provided (0.3.5.1 build), otherwise derive from TARGETARCH (0.4.0 build)
 RUN PLAT="${PLATFORM:-${TARGETARCH}}"; \
     curl -sLo /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.46.1/yq_linux_${PLAT} && \
