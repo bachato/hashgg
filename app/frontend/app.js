@@ -367,6 +367,7 @@ async function pollStatus() {
       // third source of truth to drift out of step with these two.
       let btc = null;
       try { btc = await api('GET', '/btc/status'); } catch (_) {}
+      if (btc) btcState = btc;
       if (btc && btc.vps_host) {
         showScreen('dashboard');
         updateDashboard({}, null);
