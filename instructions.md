@@ -15,6 +15,8 @@ HashGG tunnels your Datum Gateway stratum port to the internet, letting miners c
 4. Once connected, HashGG displays your **Mining Endpoint** — a public `stratum+tcp://host:port` address.
 5. Point your miners at that endpoint.
 
+**Not here to mine?** The same first screen offers **make your Bitcoin node reachable** on its own, and you can set that up first and stop there — HashGG will not nag you about the mining half. See [Making Your Bitcoin Node Reachable](#making-your-bitcoin-node-reachable-optional). You can come back and set up mining at any time from the dashboard.
+
 # The Dashboard
 
 HashGG has a simple web dashboard accessible from your StartOS UI. It shows:
@@ -25,6 +27,8 @@ HashGG has a simple web dashboard accessible from your StartOS UI. It shows:
 - **Agent** — whether the tunnel agent (playit or SSH) is running.
 
 Further down, a **Make your Bitcoin node reachable** section appears if HashGG can see a Bitcoin node — see [Making Your Bitcoin Node Reachable](#making-your-bitcoin-node-reachable-optional).
+
+If you set up reachability but not mining, the dashboard says so plainly and offers a **Set up mining** button in place of the endpoint. That is not a warning — it is a choice you have not made yet, and nothing is wrong.
 
 # Setup Options
 
@@ -58,7 +62,9 @@ Separately from mining, HashGG can put your **Bitcoin node** on the public inter
 
 It is off by default. Once HashGG can see a Bitcoin node, a **Make your Bitcoin node reachable** section appears on the dashboard with a **Set this up** button. That opens a step-by-step guide written for people who have not used a terminal: where to get a small server, how to open a terminal on Windows or a Mac, and exactly what to paste.
 
-You will need a **VPS** — a small rented Linux machine, about €6/month. If you already run one for your mining tunnel, it can usually carry this too at no extra cost, and the setup offers that as a one-click choice.
+You will need a **VPS** — a small rented Linux machine, about €6/month. One server can carry both jobs at no extra cost, and HashGG offers that as a one-click choice whichever order you do them in: if you already run one for mining it is offered here, and if you set this up first it is offered when you later set up mining. Either way there is one short step left on that server, and HashGG shows you what to paste.
+
+You can also point a **second** HashGG installation — on another machine — at the same server. Each installation keeps its own access, and setting up the second one does not disturb the first. If two things want the same port, HashGG says which port is taken and offers you a free one to use instead.
 
 ## What it involves
 

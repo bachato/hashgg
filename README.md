@@ -199,13 +199,15 @@ playit.gg's free tier only offers game-specific tunnel types (Minecraft, Terrari
 
 Separately from mining, HashGG can put your **Bitcoin node** on the public internet, so other nodes can connect *to* you. Most home nodes only ever reach out; nothing can reach in, because inbound connections need a public address and an open port.
 
-It is opt-in, off by default, and lives behind an Advanced section on the dashboard that only appears once HashGG can see a Bitcoin node.
+It is opt-in and off by default. You can reach it two ways: from the first screen, alongside the two tunnel choices, or later from a section on the dashboard. Either appears only once HashGG can see a Bitcoin node.
+
+**You do not have to mine to use it.** Set this up on its own and stop there, and HashGG will not treat the unconfigured mining half as a problem — the dashboard says mining is not set up and offers a button, rather than showing an endpoint that never arrives. Mining is still what HashGG is for, and Datum Gateway is installed either way, but nothing obliges you to switch it on.
 
 ### The two halves
 
 Making a node reachable is two separate things, and only the first can be automated:
 
-1. **The door** — a public `IP:port` that forwards to your node. HashGG builds this through a VPS, the same way it tunnels your stratum port.
+1. **The door** — a public `IP:port` that forwards to your node. HashGG builds this through a VPS, the same way it tunnels your stratum port. One VPS can carry both jobs, and HashGG offers to reuse it whichever order you set them up in. A second HashGG installation on another machine can share that server too, without disturbing the first.
 2. **The sign** — telling your node to *advertise* that address. A node that accepts connections but never advertises gets essentially no peers, because nobody knows the address exists. This is one line in your Bitcoin node's own configuration, and HashGG cannot write it for you — so it gives you the line and a Copy button, and tells you exactly where it goes.
 
 HashGG then verifies the result by dialling your own public address from the outside and completing a Bitcoin handshake, so you know it worked rather than hoping.
