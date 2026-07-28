@@ -21,6 +21,18 @@ ENV yq_sha256_arm64=4ab0b301059348d671fc1833e99903c1fecc7ca287ac131f72dca0eb9a6b
 ARG ARCH
 ARG PLATFORM
 ARG TARGETARCH
+# Which packaging this image belongs to, stated rather than deduced.
+#
+# The 0.4.0 package declares this through its own manifest. The 0.3.5.1 package
+# has no equivalent, so the backend otherwise infers it from the presence of
+# StartOS's config file. That inference does work — the file is written on a
+# fresh install — but it ties a user-visible behaviour to an implementation
+# detail of a platform we do not control, and getting it wrong makes HashGG
+# claim node reachability is fully supported on the one platform where it
+# cannot work at all.
+#
+# Left empty for the published image, which serves Umbrel and bare Docker.
+# Both infer correctly, and an empty value keeps that inference in charge.
 ARG HASHGG_PLATFORM=""
 ENV HASHGG_PLATFORM=${HASHGG_PLATFORM}
 # Use PLATFORM if provided (0.3.5.1 build), otherwise derive from TARGETARCH (0.4.0 build)
