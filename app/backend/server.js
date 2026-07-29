@@ -386,6 +386,12 @@ async function handleApi(req, res) {
       advertised_stale: !!(s.btc_p2p_acked && s.btc_p2p_advertised_for_host
         && (s.btc_p2p_advertised_for_host !== s.btc_p2p_vps_host
             || (s.btc_p2p_advertised_port || 8333) !== (s.btc_p2p_remote_port || 8333))),
+      // The line they were given last time, so a stale-advertisement warning can
+      // quote it rather than describe it — "the old one" is not something you
+      // can search a config file for.
+      advertised_line: s.btc_p2p_advertised_for_host
+        ? `externalip=${s.btc_p2p_advertised_for_host}:${s.btc_p2p_advertised_port || 8333}`
+        : null,
       verified_at: s.btc_p2p_verified_at || null,
       verified_agent: s.btc_p2p_verified_agent || null,
       // Not gated on `enabled`: on the StartOS guided path HashGG owns no

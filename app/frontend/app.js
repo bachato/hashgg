@@ -1237,6 +1237,12 @@ function renderAdvertiseStep(d) {
     + `${why} Go back a step and try again once that is sorted out.`;
 }
 
+// These strings carry a user-supplied host into innerHTML.
+function escapeHtml(v) {
+  return String(v).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 function renderBtc(d) {
   if (!d) return;
 
@@ -1370,9 +1376,21 @@ function renderBtc(d) {
 
   // The advertised address no longer matches the tunnel.
   if (d.advertised_stale) {
+    const oldLine = d.advertised_line || '';
+    const newEndpoint = d.public_endpoint
+      || (d.enabled && d.vps_host ? `${d.vps_host}:${d.remote_port || 8333}` : null);
     els.btcStaleWarning.style.display = 'block';
-    els.btcStaleWarning.innerHTML = '<strong>Your VPS address changed.</strong> The line in your '
-      + 'Bitcoin app still points at the old one — update it with the line above.';
+    els.btcStaleWarning.innerHTML =
+      '<p><strong>One line in your Bitcoin node needs updating.</strong> The address other '
+      + 'nodes should use has changed, so what your node is announcing is now out of date.</p>'
+      + (oldLine ? `<p>Find this line in your node's settings:</p>
+           <div class="code-hint">${escapeHtml(oldLine)}</div>` : '')
+      + (newEndpoint ? `<p>and change it to:</p>
+           <div class="code-hint">externalip=${escapeHtml(newEndpoint)}</div>
+           <p class="hint">Then save and restart your Bitcoin node. Until you do, it keeps
+           telling other nodes to use the old address, which no longer works.</p>`
+        : '<p class="hint">HashGG will show you the replacement line once the connection is '
+          + 'back up.</p>');
   } else {
     els.btcStaleWarning.style.display = 'none';
   }
