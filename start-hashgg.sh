@@ -257,6 +257,9 @@ check_tools() {
 
 BITCOIN_CONF=""
 BITCOIN_DATADIR=""
+# Set by verify_hashgg_to_bitcoin so the closing summary can repeat a warning
+# that would otherwise have scrolled off the screen.
+BITCOIN_REACHABLE="unknown"
 BITCOIN_RPC_PORT="8332"
 
 bitcoin_pid() {
@@ -821,6 +824,80 @@ start_hashgg() {
 # The dashboard being reachable does NOT mean the chain works — HashGG still has
 # to reach Datum. Ask HashGG itself rather than declaring success and letting the
 # user discover a broken dashboard.
+# HashGG reaches Bitcoin Knots across the Docker bridge, and a default-deny host
+# firewall drops those packets silently. HashGG then reports "no Bitcoin node
+# found", which sends people looking for a node that is running perfectly well —
+# so the setup finished looking successful while the feature that depends on it
+# could never work. Say so here, where the user is already in a terminal and the
+# fix is one command.
+verify_hashgg_to_bitcoin() {
+  step "Checking HashGG can reach Bitcoin Knots"
+
+  local port; port="${BITCOIN_P2P_PORT:-8333}"
+  local out detecting detected err
+
+  out="$(curl -fsS --max-time 45 "http://127.0.0.1:$HASHGG_UI_PORT/api/btc/status" 2>/dev/null || true)"
+  detecting="$(printf '%s' "$out" | jq -r '.detecting // false' 2>/dev/null || echo false)"
+  if [ "$detecting" = "true" ]; then
+    # The first sweep can still be running; give it one chance to finish rather
+    # than reporting a problem that resolves itself a few seconds later.
+    sleep 8
+    out="$(curl -fsS --max-time 45 "http://127.0.0.1:$HASHGG_UI_PORT/api/btc/status" 2>/dev/null || true)"
+  fi
+
+  if [ -z "$out" ]; then
+    warn "Could not ask HashGG about your Bitcoin node — skipping this check."
+    return 0
+  fi
+
+  detected="$(printf '%s' "$out" | jq -r 'if .detected then "yes" else "no" end' 2>/dev/null || echo '?')"
+  if [ "$detected" = "yes" ]; then
+    BITCOIN_REACHABLE="yes"
+    ok "HashGG → Bitcoin Knots: reachable"
+    return 0
+  fi
+  BITCOIN_REACHABLE="no"
+
+  err="$(printf '%s' "$out" | jq -r '.detect_error // ""' 2>/dev/null || true)"
+
+  warn "HashGG cannot reach Bitcoin Knots on port $port."
+  say ""
+  say "Your mining setup is unaffected. This only stops the optional feature that"
+  say "makes your Bitcoin node reachable from the internet — if you set that up,"
+  say "it will not be able to find your node."
+  say ""
+
+  case "$err" in
+    *"timed out"*)
+      say "The packets are being dropped rather than refused, which on this setup is"
+      say "almost always the host firewall: HashGG runs in Docker and reaches Knots"
+      say "across the Docker bridge, and a default-deny firewall blocks that."
+      say ""
+      if have ufw && systemctl is-active --quiet ufw 2>/dev/null; then
+        say "This machine has ufw active. Fix it with:"
+        say "  bash host-setup/install-datum-gateway.sh open-firewall"
+        say ""
+        say "or by hand:"
+        say "  sudo ufw allow from 172.16.0.0/12 to any port $port proto tcp"
+      else
+        say "Allow the Docker bridge range to reach the port:"
+        say "  172.16.0.0/12 -> $port/tcp"
+      fi
+      ;;
+    *)
+      say "Check that Bitcoin Knots is running, and that it listens on an address the"
+      say "Docker bridge can reach — binding only to 127.0.0.1 is not enough."
+      if [ -n "$err" ]; then
+        say ""
+        say "HashGG reported: $err"
+      fi
+      ;;
+  esac
+  say ""
+  say "Re-run  ./start-hashgg.sh up  afterwards to confirm it is fixed."
+  say ""
+}
+
 verify_hashgg_to_datum() {
   step "Checking HashGG can reach Datum Gateway"
 
@@ -922,6 +999,7 @@ cmd_up() {
   write_compose
   start_hashgg
   verify_hashgg_to_datum
+  verify_hashgg_to_bitcoin
 
   local sport aport
   sport="$(datum_stratum_port)"
@@ -963,10 +1041,17 @@ cmd_up() {
   say "tag there first. Then use HashGG to pick a tunnel and get your public"
   say "endpoint."
   say ""
-  say "HashGG can also just make your Bitcoin node reachable from the internet,"
-  say "without mining. That is on the same first screen, and stopping there is a"
-  say "perfectly good place to stop."
-  say ""
+  if [ "$BITCOIN_REACHABLE" = "no" ]; then
+    warn "One thing needs fixing: HashGG cannot reach Bitcoin Knots (see above)."
+    say "Mining works regardless. Making your node reachable will not, until that"
+    say "is sorted out."
+    say ""
+  else
+    say "HashGG can also just make your Bitcoin node reachable from the internet,"
+    say "without mining. That is on the same first screen, and stopping there is a"
+    say "perfectly good place to stop."
+    say ""
+  fi
   say "  ./start-hashgg.sh status    what's running"
   say "  ./start-hashgg.sh logs      follow HashGG's logs ('logs datum' for Datum)"
   say "  ./start-hashgg.sh down      stop everything"
@@ -1022,6 +1107,16 @@ cmd_status() {
 
   if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^hashgg$'; then
     ok "HashGG: running — http://localhost:$HASHGG_UI_PORT"
+    local bs bdet
+    bs="$(curl -fsS --max-time 20 "http://127.0.0.1:$HASHGG_UI_PORT/api/btc/status" 2>/dev/null || true)"
+    if [ -n "$bs" ]; then
+      bdet="$(printf '%s' "$bs" | jq -r 'if .detected then "yes" elif .detecting then "checking" else "no" end' 2>/dev/null || echo '?')"
+      case "$bdet" in
+        yes)      ok   "Bitcoin Knots: reachable from HashGG" ;;
+        checking) info "Bitcoin Knots: still checking" ;;
+        no)       warn "Bitcoin Knots: NOT reachable from HashGG — run ./start-hashgg.sh up for how to fix it" ;;
+      esac
+    fi
   else
     warn "HashGG: not running"
   fi
