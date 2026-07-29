@@ -71,7 +71,8 @@ DATUM_IMAGE="${DATUM_IMAGE:-hashgg-local/datum_gateway:$DATUM_REF}"
 DATUM_STRATUM_PORT_DEFAULT=23335
 DATUM_API_PORT_DEFAULT=7152
 
-DATUM_ADMIN_PASSWORD_NEW=""   # set only when we generate one this run
+DATUM_ADMIN_PASSWORD_NEW=""   # set only when one is chosen or generated this run
+DATUM_ADMIN_PASSWORD_GENERATED=0   # 1 when HashGG invented it rather than the user
 
 USER_DATUM_BIN="$HOME/.local/bin/datum_gateway"
 USER_DATUM_CONF="$HOME/.config/datum_gateway/datum_gateway.json"
@@ -514,6 +515,71 @@ ensure_datum_api_port() {
 # is the file we never touch.
 DATUM_CONF_CHANGED=0
 
+# Datum keeps this in a fixed 72-byte buffer and refuses to START if the value
+# is longer — the config parse fails outright rather than truncating. So the
+# limit is hard, and it counts BYTES, not characters: a password of emoji or
+# accented letters runs out sooner than it looks. Control characters are barred
+# separately; they survive JSON but cannot be typed into a browser's sign-in box.
+datum_password_problem() {
+  local p="$1" bytes
+  [ -z "$p" ] && { printf 'it is empty'; return 0; }
+  bytes="$(printf '%s' "$p" | wc -c)"
+  if [ "$bytes" -gt 71 ]; then
+    printf 'it is %s bytes long and Datum accepts at most 71' "$bytes"
+    return 0
+  fi
+  if printf '%s' "$p" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+    printf 'it contains a tab, newline or other control character'
+    return 0
+  fi
+  # Round-trip through jq, and compare. jq accepts invalid UTF-8 and silently
+  # rewrites the offending bytes as U+FFFD while exiting 0, so checking its exit
+  # status proves nothing: the password saved would differ from the password
+  # typed, and the dashboard would reject a sign-in for no visible reason.
+  local roundtrip
+  roundtrip="$(jq -rn --arg p "$p" '$p' 2>/dev/null || true)"
+  if [ "$roundtrip" != "$p" ]; then
+    printf 'it contains characters that cannot be stored unchanged'
+    return 0
+  fi
+  printf ''
+}
+
+# Asks once, at first setup. Result goes in DATUM_ADMIN_PASSWORD_NEW rather than
+# being echoed, so the prompts cannot end up captured as part of the value.
+prompt_datum_password() {
+  local p1 p2 problem
+  while :; do
+    say ""
+    say "Choose a password for Datum Gateway's dashboard. You will sign in as"
+    say "'admin' with it. Up to 71 characters; spaces and symbols are fine."
+    say "Press Enter on its own and HashGG will make one up and show it to you."
+    say ""
+    p1=""; p2=""
+    read -r -s -p "Password: " p1 || true; say ""
+    if [ -z "$p1" ]; then
+      p1="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c 20 || true)"
+      [ -n "$p1" ] || p1="hashgg-$$-$(date +%s)"
+      DATUM_ADMIN_PASSWORD_NEW="$p1"
+      DATUM_ADMIN_PASSWORD_GENERATED=1
+      return 0
+    fi
+    problem="$(datum_password_problem "$p1")"
+    if [ -n "$problem" ]; then
+      warn "That one will not work — $problem."
+      continue
+    fi
+    read -r -s -p "Type it again: " p2 || true; say ""
+    if [ "$p1" != "$p2" ]; then
+      warn "Those did not match."
+      continue
+    fi
+    DATUM_ADMIN_PASSWORD_NEW="$p1"
+    DATUM_ADMIN_PASSWORD_GENERATED=0
+    return 0
+  done
+}
+
 ensure_datum_admin() {
   local pass mod
   pass="$(json_get "$USER_DATUM_CONF" '.api.admin_password')"
@@ -552,9 +618,12 @@ ensure_datum_admin() {
 
   local newpass="$pass"
   if [ -z "$newpass" ]; then
-    newpass="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c 20 || true)"
-    [ -n "$newpass" ] || newpass="hashgg-$$-$(date +%s)"
-    DATUM_ADMIN_PASSWORD_NEW="$newpass"
+    # Ask, rather than invent. A generated password has to be fished out of a
+    # JSON file afterwards, which is a wall for the people this script is for.
+    # Only ever asked when there is none — a re-run never disturbs an existing
+    # password.
+    prompt_datum_password
+    newpass="$DATUM_ADMIN_PASSWORD_NEW"
   fi
 
   local tmp="$USER_DATUM_CONF.tmp.$$"
@@ -1090,11 +1159,15 @@ cmd_up() {
 
   if [ "$DATUM_API_ENABLED" = "1" ] && [ -n "$(json_get "$USER_DATUM_CONF" '.api.admin_password')" ]; then
     say "  Sign in first     http://127.0.0.1:$aport/clients"
-    if [ -n "$DATUM_ADMIN_PASSWORD_NEW" ]; then
+    if [ -n "$DATUM_ADMIN_PASSWORD_NEW" ] && [ "$DATUM_ADMIN_PASSWORD_GENERATED" = "1" ]; then
       say "                    admin / $DATUM_ADMIN_PASSWORD_NEW"
-      say "                    (generated just now; kept in $USER_DATUM_CONF)"
+      say "                    HashGG made this one up. Write it down now — it is"
+      say "                    saved in $USER_DATUM_CONF if you lose it."
+    elif [ -n "$DATUM_ADMIN_PASSWORD_NEW" ]; then
+      say "                    username 'admin', and the password you just chose."
     else
-      say "                    username 'admin', password from api.admin_password in"
+      say "                    username 'admin', and the password you chose when you"
+      say "                    first set this up. If you have forgotten it, it is in"
       say "                    $USER_DATUM_CONF"
     fi
     say ""
