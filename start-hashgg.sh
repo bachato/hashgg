@@ -830,6 +830,36 @@ start_hashgg() {
 # so the setup finished looking successful while the feature that depends on it
 # could never work. Say so here, where the user is already in a terminal and the
 # fix is one command.
+# The rule is one command away, needs root, and is the whole difference between
+# the feature working and not. Printing it and walking away leaves a
+# non-technical user to run a second script by hand — the friction this script
+# exists to remove. So offer to apply it, and ask first, because changing the
+# host firewall is exactly the kind of thing this script promises to confirm.
+#
+# One call fixes both ports: the helper opens the stratum port and the Bitcoin
+# P2P port together.
+offer_open_firewall() {
+  have ufw || return 1
+  systemctl is-active --quiet ufw 2>/dev/null || return 1
+  [ -t 0 ] || return 1          # non-interactive run: print, never act
+  [ -x "$DATUM_HELPER" ] || [ -r "$DATUM_HELPER" ] || return 1
+
+  say ""
+  say "HashGG can add that rule for you. It allows only the Docker bridge"
+  say "(172.16.0.0/12) to reach those two ports on this machine, and nothing else."
+  say "You will be asked for your password, because changing the firewall needs it."
+  say ""
+  confirm "Open the firewall now?" default-yes || return 1
+
+  if bash "$DATUM_HELPER" open-firewall; then
+    ok "Firewall rule added."
+    return 0
+  fi
+  warn "That did not complete. You can run it yourself:"
+  say "  bash host-setup/install-datum-gateway.sh open-firewall"
+  return 1
+}
+
 verify_hashgg_to_bitcoin() {
   step "Checking HashGG can reach Bitcoin Knots"
 
@@ -874,11 +904,29 @@ verify_hashgg_to_bitcoin() {
       say "across the Docker bridge, and a default-deny firewall blocks that."
       say ""
       if have ufw && systemctl is-active --quiet ufw 2>/dev/null; then
-        say "This machine has ufw active. Fix it with:"
-        say "  bash host-setup/install-datum-gateway.sh open-firewall"
-        say ""
-        say "or by hand:"
-        say "  sudo ufw allow from 172.16.0.0/12 to any port $port proto tcp"
+        say "This machine has ufw active, which is almost certainly the cause."
+        if offer_open_firewall; then
+          # Re-check rather than claim success: the rule may not have been the
+          # only thing wrong.
+          local recheck
+          sleep 2
+          recheck="$(curl -fsS --max-time 45 "http://127.0.0.1:$HASHGG_UI_PORT/api/btc/status" 2>/dev/null || true)"
+          if [ -n "$recheck" ] && [ "$(printf '%s' "$recheck" | jq -r 'if .detected then "yes" else "no" end' 2>/dev/null)" = "yes" ]; then
+            BITCOIN_REACHABLE="yes"
+            ok "HashGG → Bitcoin Knots: reachable"
+            say ""
+            return 0
+          fi
+          warn "Still cannot reach it. Check that Bitcoin Knots is running and"
+          warn "listening on port $port."
+        else
+          say ""
+          say "To do it later:"
+          say "  bash host-setup/install-datum-gateway.sh open-firewall"
+          say ""
+          say "or by hand:"
+          say "  sudo ufw allow from 172.16.0.0/12 to any port $port proto tcp"
+        fi
       else
         say "Allow the Docker bridge range to reach the port:"
         say "  172.16.0.0/12 -> $port/tcp"
@@ -928,8 +976,15 @@ verify_hashgg_to_datum() {
     say "HashGG runs in Docker and reaches Datum across the Docker bridge, so the"
     say "usual causes are a host firewall, or Datum listening on loopback only."
     say ""
-    if have ufw; then
-      say "This machine has ufw. If it's active, open the bridge to Datum with:"
+    if have ufw && systemctl is-active --quiet ufw 2>/dev/null; then
+      if ! offer_open_firewall; then
+        say ""
+        say "To do it later:"
+        say "  bash host-setup/install-datum-gateway.sh open-firewall"
+        say ""
+      fi
+    elif have ufw; then
+      say "This machine has ufw. If you enable it later, open the bridge with:"
       say "  bash host-setup/install-datum-gateway.sh open-firewall"
       say ""
     fi
