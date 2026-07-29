@@ -1205,6 +1205,15 @@ async function refreshBtcStatus() {
 // there is not one yet. Anything shown here can be pasted into a config file,
 // so the not-ready case must stay a comment and the controls must stay off.
 function renderAdvertiseStep(d) {
+  // The firewall command belongs here too. It is offered when a check fails,
+  // and a check fails most often while the tunnel is not up — the same state
+  // that returns early below, which left the box empty next to a Copy button
+  // at precisely the moment its contents were the thing being asked for.
+  const fwPort = d.remote_port || 8333;
+  els.btcFirewallCmd.textContent =
+    `ufw allow ${fwPort}/tcp comment "HashGG bitcoin p2p"   # or: firewall-cmd --permanent --add-port=${fwPort}/tcp && firewall-cmd --reload`;
+  els.btcWhereToPaste.innerHTML = btcPasteInstructions(d);
+
   const endpoint = d.public_endpoint
     || (d.enabled && d.vps_host ? `${d.vps_host}:${d.remote_port || 8333}` : null);
   els.btcExternalipLine.textContent = endpoint
@@ -1328,13 +1337,6 @@ function renderBtc(d) {
       : 'Other nodes will start connecting on their own, usually within a few hours.';
   }
 
-  const port = d.remote_port || 8333;
-  els.btcFirewallCmd.textContent =
-    `ufw allow ${port}/tcp comment "HashGG bitcoin p2p"   # or: firewall-cmd --permanent --add-port=${port}/tcp && firewall-cmd --reload`;
-
-  // Step 3 — the line, and where it goes
-  els.btcWhereToPaste.innerHTML = btcPasteInstructions(d);
-  renderAdvertiseStep(d);
   els.btcAckState.textContent = d.acked ? 'Added' : '';
   els.btcAckState.className = 'test-status' + (d.acked ? ' ok' : '');
 

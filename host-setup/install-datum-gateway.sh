@@ -581,12 +581,23 @@ action_configure() {
   local api_port="${EX_API_PORT:-$DEFAULT_API_PORT}"
   [[ "$api_port" =~ ^[0-9]+$ ]] || api_port="$DEFAULT_API_PORT"
 
-  # Payout
+  # Payout. Optional on purpose: HashGG also does node reachability, and someone
+  # here only for that should not have to produce a Bitcoin address for a payout
+  # they will never receive. Datum accepts an empty one provided its dashboard
+  # can edit the config — it logs the problem and waits instead of exiting — so
+  # this can be filled in later, in the place the setup already sends people to.
   say ""
   say "Datum submits blocks to OCEAN for non-custodial payout."
-  local payout; payout="$(ask "Payout Bitcoin address" "${EX_PAYOUT:-}")"
-  [[ -z "$payout" ]] && die "Payout address is required."
-  if [[ ! "$payout" =~ ^(bc1|tb1|bcrt1|1|3|m|n|2)[A-Za-z0-9]+$ ]]; then
+  say "Leave this blank if you are not mining yet — you can set it later in"
+  say "Datum Gateway's own dashboard, and it will wait until you do."
+  local payout; payout="$(ask "Payout Bitcoin address (or press Enter to skip)" "${EX_PAYOUT:-}")"
+  PAYOUT_DEFERRED=0
+  if [[ -z "$payout" ]]; then
+    PAYOUT_DEFERRED=1
+    warn "No payout address — Datum will start but will not mine until one is set."
+    say "Set it at Datum Gateway's dashboard when you are ready. Making your"
+    say "Bitcoin node reachable does not need it."
+  elif [[ ! "$payout" =~ ^(bc1|tb1|bcrt1|1|3|m|n|2)[A-Za-z0-9]+$ ]]; then
     warn "Payout address doesn't look like a typical Bitcoin address."
     confirm "Use it anyway?" default-no || die "Aborted."
   fi
@@ -673,7 +684,8 @@ action_configure() {
     --argjson aport "$api_port" \
     --arg payout "$payout" \
     --arg cbprimary "$cb_primary" \
-    --arg cbsecondary "$cb_secondary" '
+    --arg cbsecondary "$cb_secondary" \
+    --argjson deferred "${PAYOUT_DEFERRED:-0}" '
       (.bitcoind //= {}) |
       (.bitcoind.rpcurl       = $rpcurl) |
       (.bitcoind.rpcuser      = $rpcuser) |
@@ -697,7 +709,13 @@ action_configure() {
       # 0, and Datum reads 0 as "disabled", so the dashboard we point people at
       # first would refuse connections. (No apostrophes in here — this comment
       # lives inside a single-quoted shell string.)
-      (.api.listen_port = $aport)
+      (.api.listen_port = $aport) |
+      # An empty payout address is only survivable if Datum may edit its own
+      # config: it then logs the problem and waits, rather than treating the
+      # missing address as fatal and exiting. This flag alone permits nothing —
+      # the settings form stays read-only until an admin password is set too,
+      # which is asked for separately.
+      (if $deferred == 1 then (.api.modify_conf = true) else . end)
     ')"
 
   mkdir -p "$USER_CONF_DIR"

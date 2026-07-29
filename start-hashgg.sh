@@ -1105,10 +1105,18 @@ cmd_up() {
     say ""
   fi
 
-  say "To mine: start with Datum Gateway — set your payout address and coinbase"
-  say "tag there first. Then use HashGG to pick a tunnel and get your public"
-  say "endpoint."
-  say ""
+  local payout_now; payout_now="$(json_get "$USER_DATUM_CONF" '.mining.pool_address')"
+  if [ -z "$payout_now" ]; then
+    warn "Datum Gateway has no payout address yet, so it will not mine."
+    say "That is fine if you are here for node reachability — nothing else needs it."
+    say "To mine later, set an address in Datum Gateway's dashboard above; it will"
+    say "start once you do."
+    say ""
+  else
+    say "To mine: start with Datum Gateway — check your payout address and coinbase"
+    say "tag there. Then use HashGG to pick a tunnel and get your public endpoint."
+    say ""
+  fi
   if [ "$BITCOIN_REACHABLE" = "no" ]; then
     warn "One thing needs fixing: HashGG cannot reach Bitcoin Knots (see above)."
     say "Mining works regardless. Making your node reachable will not, until that"
