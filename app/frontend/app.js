@@ -76,6 +76,7 @@ const els = {
   btnBtcUToConnect: document.getElementById('btn-btc-u-to-connect'),
   btcUConnectStatus: document.getElementById('btc-u-connect-status'),
   btnBtcURetry: document.getElementById('btn-btc-u-retry'),
+  btnBtcUPortFix: document.getElementById('btn-btc-u-port-fix'),
   btcIntro: document.getElementById('btc-intro'),
   btcChecklist: document.getElementById('btc-checklist'),
   btcGuidance: document.getElementById('btc-guidance'),
@@ -1978,13 +1979,30 @@ async function btcUConnect() {
   els.btnBtcURetry.style.display = 'none';
   document.querySelectorAll('#screen-btc-u-connect .btc-wiz-back')
     .forEach((b) => { b.style.display = 'none'; });
+  els.btnBtcUPortFix.style.display = 'none';
   setBtcStatus(els.btcUConnectStatus, 'Connecting…', '');
   try {
     await api('POST', '/btc/enable', {});
-    lastBtcSig = null;
-    await refreshBtcStatus();
-    setBtcStatus(els.btcUConnectStatus, '', '');
-    btcWizGo('btc-u-advertise');
+    // Enabling only spawns ssh; whether the forward survives is settled a
+    // second or two later. Advancing on the POST alone walked the user through
+    // the remaining steps with no tunnel, and the first sign of trouble was the
+    // final check reporting that somebody else's node had answered — because
+    // the port belonged to somebody else's forward.
+    const outcome = await btcUAwaitTunnel();
+    if (outcome.ok) {
+      setBtcStatus(els.btcUConnectStatus, '', '');
+      btcWizGo('btc-u-advertise');
+      return;
+    }
+    setBtcStatus(els.btcUConnectStatus, outcome.error
+      || 'The connection did not come up. You can try again.', 'err');
+    if (outcome.portSuggestion) {
+      els.btnBtcUPortFix.textContent = `Use port ${outcome.portSuggestion} instead`;
+      els.btnBtcUPortFix.style.display = 'inline-block';
+    }
+    els.btnBtcURetry.style.display = 'inline-block';
+    document.querySelectorAll('#screen-btc-u-connect .btc-wiz-back')
+      .forEach((b) => { b.style.display = 'inline-block'; });
   } catch (err) {
     setBtcStatus(els.btcUConnectStatus, err.message, 'err');
     els.btnBtcURetry.style.display = 'inline-block';
@@ -1993,8 +2011,42 @@ async function btcUConnect() {
   }
 }
 
+// Poll until the tunnel settles. 'connecting' is not an answer — ssh retries on
+// its own, so a genuine failure can look like connecting for a moment before the
+// error lands.
+async function btcUAwaitTunnel() {
+  for (let i = 0; i < 15; i++) {
+    let d = null;
+    try { d = await api('GET', '/btc/status'); } catch (_) {}
+    if (d) {
+      btcState = d;
+      if (d.tunnel_status === 'connected') return { ok: true };
+      if (d.tunnel_status === 'error' || d.port_suggestion || d.last_error) {
+        return { ok: false, error: d.last_error, portSuggestion: d.port_suggestion };
+      }
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  const s = btcState || {};
+  return { ok: false, error: s.last_error, portSuggestion: s.port_suggestion };
+}
+
 els.btnBtcUToConnect.addEventListener('click', btcUConnect);
 els.btnBtcURetry.addEventListener('click', btcUConnect);
+// Switch to the offered port and immediately try again, so the fix is one
+// press rather than a trip to the dashboard the user has not seen yet.
+els.btnBtcUPortFix.addEventListener('click', async () => {
+  els.btnBtcUPortFix.style.display = 'none';
+  setBtcStatus(els.btcUConnectStatus, 'Switching port…', '');
+  try {
+    await api('POST', '/btc/use-suggested-port', {});
+    lastBtcSig = null;
+  } catch (err) {
+    setBtcStatus(els.btcUConnectStatus, err.message, 'err');
+    return;
+  }
+  btcUConnect();
+});
 
 els.btnBtcForget.addEventListener('click', async () => {
   if (!confirm('This forgets the server HashGG is using for your Bitcoin node and stops the '

@@ -1612,6 +1612,15 @@ echo "sshd pubkeyauth: $EFFECTIVE_PUBKEY"
 
 echo ""
 echo "=== Setup complete! ==="
+if [ -n "$CLASH" ]; then
+  echo ""
+  for p in $CLASH; do
+    echo "  !! But port $p on this server is already taken, so the tunnel cannot"
+    echo "     start on it. Go back to HashGG and choose another port — it will"
+    echo "     offer you one."
+  done
+  echo ""
+fi
 echo "Now go back to HashGG and continue where you left off."
 `;
 }
