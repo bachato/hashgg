@@ -799,6 +799,14 @@ start_hashgg() {
   step "Starting HashGG"
   info "Image: $HASHGG_IMAGE"
   check_container_collision
+  # Check the registry for this tag before starting. Without this, `up` reuses
+  # whatever copy is already on the machine, so a reinstall or a restart quietly
+  # keeps running an older build of the same version. Failure here is not fatal —
+  # a machine that is offline should still start with the image it already has.
+  info "Checking for an updated image..."
+  if ! compose pull 2>/dev/null; then
+    warn "Could not reach the registry — starting with the image already on this machine."
+  fi
   compose up -d
   # /api/status is cheap and only answers once the backend is actually serving.
   if wait_for_http "http://127.0.0.1:$HASHGG_UI_PORT/api/status" 60 "HashGG"; then
