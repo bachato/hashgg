@@ -1290,6 +1290,13 @@ function renderBtc(d) {
   if (finished) {
     const peers = (typeof d.inbound_peers === 'number') ? ` · ${d.inbound_peers} inbound` : '';
     els.btcSummaryNote.textContent = `· Already done! Reachable\u00a0at\u00a0${d.public_endpoint}${peers}`;
+  } else if (d.port_suggestion) {
+    // Named here because the section is collapsed by default and this is the
+    // one failure with a fix a single click inside it. Two nodes sharing a
+    // server on different ports is supported, so this must read as a choice to
+    // make rather than as a tunnel that will not start.
+    els.btcSummaryNote.textContent =
+      `· port ${d.remote_port || 8333} is taken — open this to pick another`;
   } else if (d.verified_at) {
     els.btcSummaryNote.textContent = `· tunnel ${d.tunnel_status} — not reachable right now`;
   } else {
