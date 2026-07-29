@@ -1621,17 +1621,33 @@ function btcWizGo(name) {
     if (share) els.btcUShareHost.textContent = share;
   }
   if (name === 'btc-u-login') {
-    // Already know the address — because they chose the server that carries
-    // mining, or came back to a half-finished setup. Asking again would be
-    // asking a question we have the answer to.
+    // Knowing the address and having been handed it are different things, and
+    // this used to treat them alike. Only the sharing path — where the user
+    // pressed "Use it" against the server carrying mining — justifies hiding
+    // the field and saying whose server it is. A leftover from an earlier
+    // attempt at this same setup justifies neither: it told people with no
+    // mining tunnel at all that they were looking at one, and then refused to
+    // let them type a different address. The stratum host must still exist
+    // too, so resetting mining cannot leave that claim standing.
     const known = btcState && btcState.vps_host;
-    if (known) {
+    const shared = known && btcState.vps_source === 'shared' && btcState.stratum_vps_host;
+    if (shared) {
       els.btcVpsHost.value = known;
       btcUUpdateSsh();
       els.btcUIpGroup.style.display = 'none';
       els.btcULoginIntro.innerHTML = 'This is the server already carrying your mining tunnel, at '
         + `<code>${known}</code>. You will need its <strong>root password</strong> — the one you `
         + 'used when you first set it up.';
+    } else if (known) {
+      // Remembered, not decided: shown in the field so it can be read and
+      // changed. A half-finished attempt should not silently choose the server
+      // for the next one.
+      els.btcVpsHost.value = known;
+      btcUUpdateSsh();
+      els.btcUIpGroup.style.display = 'block';
+      els.btcULoginIntro.innerHTML = 'HashGG has filled in the server you used last time. If that '
+        + 'is still the one you want, leave it as it is — otherwise change it below. You will '
+        + "also need that server's <strong>root password</strong>.";
     } else {
       els.btcUIpGroup.style.display = 'block';
       els.btcULoginIntro.innerHTML = 'You need two things from the <strong>Manage</strong> page on '
