@@ -509,7 +509,10 @@ async function refreshDatumOnly() {
     const d = await api('GET', '/datum/status');
     const ok = d && d.reachable;
     els.dotDatum.className = `dot ${ok ? 'dot-green' : 'dot-gray'}`;
-    els.statusDatum.textContent = ok ? 'Ready when you are' : 'Not running';
+    // Only the stratum port is probed, so "not running" would be a claim beyond
+    // the evidence: Datum keeps that port closed until it has a payout address,
+    // and would be reported as absent while up and serving its dashboard.
+    els.statusDatum.textContent = ok ? 'Ready when you are' : 'Not accepting miners';
   } catch (_) {
     els.dotDatum.className = 'dot dot-gray';
     els.statusDatum.textContent = '—';

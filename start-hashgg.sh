@@ -73,6 +73,8 @@ DATUM_API_PORT_DEFAULT=7152
 
 DATUM_ADMIN_PASSWORD_NEW=""   # set only when one is chosen or generated this run
 DATUM_ADMIN_PASSWORD_GENERATED=0   # 1 when HashGG invented it rather than the user
+# 1 when Datum is up but has no stratum port because it has no payout address.
+DATUM_STRATUM_DEFERRED=0
 
 USER_DATUM_BIN="$HOME/.local/bin/datum_gateway"
 USER_DATUM_CONF="$HOME/.config/datum_gateway/datum_gateway.json"
@@ -663,6 +665,14 @@ start_datum_native() {
 
   if datum_native_running; then
     ok "Datum Gateway already running (pid $(cat "$DATUM_PID_FILE"))"
+    # Recognise the deferred state here too. On a re-run the wait below never
+    # runs, so without this the flag stays unset and the connectivity check
+    # further on reports a failure for a state we deliberately allow.
+    if ! port_open 127.0.0.1 "$sport" \
+       && [ -z "$(json_get "$USER_DATUM_CONF" '.mining.pool_address')" ]; then
+      DATUM_STRATUM_DEFERRED=1
+      info "Its stratum port is closed — no payout address yet. That is expected."
+    fi
     return 0
   fi
   if port_open 127.0.0.1 "$sport"; then
@@ -682,6 +692,24 @@ start_datum_native() {
     die "Datum Gateway failed to start."
   fi
   wait_for_port 127.0.0.1 "$sport" 30 "Datum Gateway" || {
+    # No payout address means no block template, which means no stratum port.
+    # That is expected rather than broken now that the address can be skipped,
+    # and dying here would make skipping it pointless — it would take down the
+    # very dashboard the user is meant to supply the address in.
+    local payout_set; payout_set="$(json_get "$USER_DATUM_CONF" '.mining.pool_address')"
+    if [ -z "$payout_set" ] && datum_native_running; then
+      say ""
+      warn "Datum Gateway is running, but has not opened its stratum port."
+      say "That is expected — it has no payout address yet, so it cannot build"
+      say "block templates and has nothing to offer a miner."
+      say ""
+      say "Nothing is wrong if you are here to make your node reachable. To mine,"
+      say "set a payout address in Datum Gateway's dashboard; it opens the port"
+      say "by itself once you do."
+      say ""
+      DATUM_STRATUM_DEFERRED=1
+      return 0
+    fi
     err "Last lines of $DATUM_LOG_FILE:"; tail -20 "$DATUM_LOG_FILE" >&2 || true
     die "Datum Gateway started but never opened its stratum port."
   }
@@ -1031,6 +1059,14 @@ verify_hashgg_to_bitcoin() {
 verify_hashgg_to_datum() {
   step "Checking HashGG can reach Datum Gateway"
 
+  # Datum without a payout address never opens the stratum port, so this check
+  # cannot pass and its failure would say nothing new — only alarm someone who
+  # was just told the same state was fine.
+  if [ "$DATUM_STRATUM_DEFERRED" = "1" ]; then
+    info "Skipped — Datum has no payout address yet, so its stratum port is closed."
+    return 0
+  fi
+
   # One retry: /api/diag opens sockets to Datum and can be slow on first call.
   local out
   out="$(curl -fsS --max-time 40 "http://127.0.0.1:$HASHGG_UI_PORT/api/diag" 2>/dev/null || true)"
@@ -1153,8 +1189,13 @@ cmd_up() {
   say "  HashGG            http://localhost:$HASHGG_UI_PORT"
   say "                    tunnel setup and your public mining endpoint"
   say ""
-  say "  Stratum (local)   127.0.0.1:$sport"
-  say "                    for miners on this machine or your LAN"
+  if [ "$DATUM_STRATUM_DEFERRED" = "1" ]; then
+    say "  Stratum (local)   not open yet"
+    say "                    Datum opens it once it has a payout address"
+  else
+    say "  Stratum (local)   127.0.0.1:$sport"
+    say "                    for miners on this machine or your LAN"
+  fi
   say ""
 
   if [ "$DATUM_API_ENABLED" = "1" ] && [ -n "$(json_get "$USER_DATUM_CONF" '.api.admin_password')" ]; then
