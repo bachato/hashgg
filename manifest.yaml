@@ -1,7 +1,11 @@
 id: hashgg
 title: "HashGG"
 version: 0.7.2.0
-release-notes: "You can now make your Bitcoin node reachable without setting up mining. It is offered on the first screen alongside the tunnel choices, and if you stop there the dashboard treats mining as a choice you have not made rather than something wrong. One VPS can carry both jobs whichever order you set them up in, and a second HashGG installation can share the same server without disturbing the first. Note that on this version of StartOS the bundled Bitcoin package only ever advertises its Tor address, so the reachability section explains why it cannot be enabled here. StartOS 0.4.0 supports it fully."
+release-notes: "Sharing one server between two HashGG installations is now safe. Setting up a second machine against a server another was already using would quietly replace the first one's access, and mining on that machine stopped at its next reconnect — hours later, with nothing to connect the two events. Each installation now keeps its own access, and removing one leaves the others working.
+
+If a port is already taken on your server, HashGG now says so plainly and offers you a free one instead of failing with a message from ssh. The setup script also warns you before you get that far.
+
+This version also adds a section for making your Bitcoin node reachable from the internet. It cannot work on this version of StartOS — the bundled Bitcoin package rewrites its configuration on every start and only ever advertises its Tor address — so HashGG now explains that where you would look for it, rather than leaving it out with no reason given. StartOS 0.4.0 supports it fully. Mining is unaffected either way."
 license: MIT
 wrapper-repo: "https://github.com/paulscode/hashgg"
 upstream-repo: "https://github.com/playit-cloud/playit-agent"
