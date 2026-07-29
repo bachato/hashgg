@@ -1205,10 +1205,15 @@ function renderBtc(d) {
 
   // Nothing to show unless we found a node (or the platform needs to explain
   // itself). Keeps the dashboard unchanged for everyone else.
-  // `d.enabled` matters as much as detection: a node that stops answering must
-  // not take the section away with it, or the user is left with a live tunnel
-  // they can neither see nor switch off.
-  const show = !!d.detected || d.detecting || d.enabled || d.capability !== 'full';
+  //
+  // `d.enabled` and `d.vps_host` matter as much as detection, and neither is
+  // redundant. A node that stops answering must not take the section away with
+  // it, or the user is left with a live tunnel they can neither see nor switch
+  // off — and a setup left half-finished records a server without ever
+  // enabling the tunnel, so without `vps_host` the section would vanish and
+  // strand it, with no way to resume, inspect or undo it.
+  const show = !!d.detected || d.detecting || d.enabled || !!d.vps_host
+    || d.capability !== 'full';
   els.btcSection.style.display = show ? 'block' : 'none';
   if (!show) return;
 
