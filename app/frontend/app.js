@@ -109,6 +109,7 @@ const els = {
   btnBtcCopyLine: document.getElementById('btn-btc-copy-line'),
   btcCopyLineFeedback: document.getElementById('btc-copy-line-feedback'),
   btnBtcAck: document.getElementById('btn-btc-ack'),
+  btcAdvertiseBlocked: document.getElementById('btc-advertise-blocked'),
   btcAckState: document.getElementById('btc-ack-state'),
   btnBtcVerify: document.getElementById('btn-btc-verify'),
   btcVerifyStatus: document.getElementById('btc-verify-status'),
@@ -1200,6 +1201,29 @@ async function refreshBtcStatus() {
   } catch (_) { /* non-fatal — the section just stops updating */ }
 }
 
+// The wizard's last step: the line for bitcoin.conf, or an explanation of why
+// there is not one yet. Anything shown here can be pasted into a config file,
+// so the not-ready case must stay a comment and the controls must stay off.
+function renderAdvertiseStep(d) {
+  const endpoint = d.public_endpoint
+    || (d.enabled && d.vps_host ? `${d.vps_host}:${d.remote_port || 8333}` : null);
+  els.btcExternalipLine.textContent = endpoint
+    ? `externalip=${endpoint}`
+    : '# not ready yet — nothing to copy';
+  els.btnBtcCopyLine.style.display = endpoint ? 'inline-block' : 'none';
+  els.btnBtcAck.disabled = !endpoint;
+  if (!els.btcAdvertiseBlocked) return;
+  if (endpoint) {
+    els.btcAdvertiseBlocked.style.display = 'none';
+    return;
+  }
+  const why = d.last_error || d.detect_error
+    || 'HashGG has not been able to switch the connection on yet.';
+  els.btcAdvertiseBlocked.style.display = 'block';
+  els.btcAdvertiseBlocked.innerHTML = '<strong>There is no line to add yet.</strong> '
+    + `${why} Go back a step and try again once that is sorted out.`;
+}
+
 function renderBtc(d) {
   if (!d) return;
 
@@ -1235,6 +1259,12 @@ function renderBtc(d) {
   els.btnBtcWizLaunch.style.display = d.enabled ? 'none' : 'inline-block';
   els.btnBtcWizResult.style.display = finished ? 'inline-block' : 'none';
   els.btnBtcForget.style.display = d.vps_host ? 'inline-block' : 'none';
+
+  // Before the early return below, not after it. These elements belong to the
+  // wizard's last step, and the state that most needs them explained — a tunnel
+  // that never came up — is precisely the one that returns early here. Left
+  // after it, the step kept whatever the markup said and never said why.
+  renderAdvertiseStep(d);
 
   if (!d.enabled) {
     els.btcIntro.style.display = 'block';
@@ -1304,13 +1334,7 @@ function renderBtc(d) {
 
   // Step 3 — the line, and where it goes
   els.btcWhereToPaste.innerHTML = btcPasteInstructions(d);
-  const advertiseEndpoint = d.public_endpoint
-    || (d.enabled && d.vps_host ? `${d.vps_host}:${d.remote_port || 8333}` : null);
-  els.btcExternalipLine.textContent = advertiseEndpoint
-    ? `externalip=${advertiseEndpoint}`
-    : '# not ready yet — nothing to copy';
-  els.btnBtcCopyLine.style.display = advertiseEndpoint ? 'inline-block' : 'none';
-  els.btnBtcAck.disabled = !advertiseEndpoint;
+  renderAdvertiseStep(d);
   els.btcAckState.textContent = d.acked ? 'Added' : '';
   els.btcAckState.className = 'test-status' + (d.acked ? ' ok' : '');
 

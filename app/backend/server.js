@@ -1604,7 +1604,7 @@ echo "sshd pubkeyauth: $EFFECTIVE_PUBKEY"
 
 echo ""
 echo "=== Setup complete! ==="
-echo "Return to HashGG and click Test Connection."
+echo "Now go back to HashGG and continue where you left off."
 `;
 }
 
