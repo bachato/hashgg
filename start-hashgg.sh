@@ -864,30 +864,45 @@ verify_hashgg_to_bitcoin() {
   step "Checking HashGG can reach Bitcoin Knots"
 
   local port; port="${BITCOIN_P2P_PORT:-8333}"
-  local out detecting detected err
+  local out detecting detected err tries=0
 
-  out="$(curl -fsS --max-time 45 "http://127.0.0.1:$HASHGG_UI_PORT/api/btc/status" 2>/dev/null || true)"
-  detecting="$(printf '%s' "$out" | jq -r '.detecting // false' 2>/dev/null || echo false)"
-  if [ "$detecting" = "true" ]; then
-    # The first sweep can still be running; give it one chance to finish rather
-    # than reporting a problem that resolves itself a few seconds later.
-    sleep 8
+  # Wait for the sweep to actually finish. Judging it early gave the wrong
+  # advice: while detection is still running there is no error to read, an empty
+  # error looks like "no node anywhere", and the real answer — a connection
+  # timing out, which points straight at the firewall — arrives seconds later.
+  while [ "$tries" -lt 12 ]; do
     out="$(curl -fsS --max-time 45 "http://127.0.0.1:$HASHGG_UI_PORT/api/btc/status" 2>/dev/null || true)"
-  fi
+    [ -z "$out" ] && break
+    detected="$(printf '%s' "$out" | jq -r 'if .detected then "yes" else "no" end' 2>/dev/null || echo '?')"
+    [ "$detected" = "yes" ] && break
+    detecting="$(printf '%s' "$out" | jq -r '.detecting // false' 2>/dev/null || echo false)"
+    [ "$detecting" != "true" ] && break
+    tries=$((tries + 1))
+    sleep 5
+  done
 
   if [ -z "$out" ]; then
     warn "Could not ask HashGG about your Bitcoin node — skipping this check."
     return 0
   fi
 
-  detected="$(printf '%s' "$out" | jq -r 'if .detected then "yes" else "no" end' 2>/dev/null || echo '?')"
   if [ "$detected" = "yes" ]; then
     BITCOIN_REACHABLE="yes"
     ok "HashGG → Bitcoin Knots: reachable"
     return 0
   fi
-  BITCOIN_REACHABLE="no"
 
+  if [ "$detecting" = "true" ]; then
+    # Still going after a minute. Say that, rather than diagnose a result we
+    # do not have yet.
+    warn "HashGG is still looking for your Bitcoin node — no answer yet."
+    say ""
+    say "Check again in a moment with:  ./start-hashgg.sh status"
+    say ""
+    return 0
+  fi
+
+  BITCOIN_REACHABLE="no"
   err="$(printf '%s' "$out" | jq -r '.detect_error // ""' 2>/dev/null || true)"
 
   warn "HashGG cannot reach Bitcoin Knots on port $port."
@@ -896,51 +911,49 @@ verify_hashgg_to_bitcoin() {
   say "makes your Bitcoin node reachable from the internet — if you set that up,"
   say "it will not be able to find your node."
   say ""
+  if [ -n "$err" ]; then
+    say "HashGG reported:"
+    say "  $err"
+    say ""
+  fi
 
-  case "$err" in
-    *"timed out"*)
-      say "The packets are being dropped rather than refused, which on this setup is"
-      say "almost always the host firewall: HashGG runs in Docker and reaches Knots"
-      say "across the Docker bridge, and a default-deny firewall blocks that."
-      say ""
-      if have ufw && systemctl is-active --quiet ufw 2>/dev/null; then
-        say "This machine has ufw active, which is almost certainly the cause."
-        if offer_open_firewall; then
-          # Re-check rather than claim success: the rule may not have been the
-          # only thing wrong.
-          local recheck
-          sleep 2
-          recheck="$(curl -fsS --max-time 45 "http://127.0.0.1:$HASHGG_UI_PORT/api/btc/status" 2>/dev/null || true)"
-          if [ -n "$recheck" ] && [ "$(printf '%s' "$recheck" | jq -r 'if .detected then "yes" else "no" end' 2>/dev/null)" = "yes" ]; then
-            BITCOIN_REACHABLE="yes"
-            ok "HashGG → Bitcoin Knots: reachable"
-            say ""
-            return 0
-          fi
-          warn "Still cannot reach it. Check that Bitcoin Knots is running and"
-          warn "listening on port $port."
-        else
-          say ""
-          say "To do it later:"
-          say "  bash host-setup/install-datum-gateway.sh open-firewall"
-          say ""
-          say "or by hand:"
-          say "  sudo ufw allow from 172.16.0.0/12 to any port $port proto tcp"
-        fi
-      else
-        say "Allow the Docker bridge range to reach the port:"
-        say "  172.16.0.0/12 -> $port/tcp"
-      fi
-      ;;
-    *)
-      say "Check that Bitcoin Knots is running, and that it listens on an address the"
-      say "Docker bridge can reach — binding only to 127.0.0.1 is not enough."
-      if [ -n "$err" ]; then
+  # An active ufw is the discriminator, not the wording of the error. HashGG
+  # reaches Knots across the Docker bridge, and a default-deny firewall is the
+  # overwhelming cause on such a machine — while the error text varies with how
+  # far detection got, and keying the offer off it meant the fix was withheld
+  # from the very people it was written for.
+  if have ufw && systemctl is-active --quiet ufw 2>/dev/null; then
+    say "This machine has ufw active. HashGG runs in Docker and reaches Knots"
+    say "across the Docker bridge, which a default-deny firewall blocks."
+    if offer_open_firewall; then
+      local recheck
+      sleep 3
+      recheck="$(curl -fsS --max-time 45 "http://127.0.0.1:$HASHGG_UI_PORT/api/btc/status" 2>/dev/null || true)"
+      if [ -n "$recheck" ] \
+         && [ "$(printf '%s' "$recheck" | jq -r 'if .detected then "yes" else "no" end' 2>/dev/null)" = "yes" ]; then
+        BITCOIN_REACHABLE="yes"
+        ok "HashGG → Bitcoin Knots: reachable"
         say ""
-        say "HashGG reported: $err"
+        return 0
       fi
-      ;;
-  esac
+      warn "Still cannot reach it, so the firewall was not the only thing."
+      say "Check that Bitcoin Knots is running and listening on port $port."
+      say ""
+      return 0
+    fi
+    say ""
+    say "To do it later:"
+    say "  bash host-setup/install-datum-gateway.sh open-firewall"
+    say ""
+    say "or by hand:"
+    say "  sudo ufw allow from 172.16.0.0/12 to any port $port proto tcp"
+  else
+    say "Check that Bitcoin Knots is running, and that it listens on an address the"
+    say "Docker bridge can reach — binding only to 127.0.0.1 is not enough."
+    say ""
+    say "If this machine has a firewall other than ufw, allow the Docker bridge"
+    say "range 172.16.0.0/12 to reach port $port/tcp."
+  fi
   say ""
   say "Re-run  ./start-hashgg.sh up  afterwards to confirm it is fixed."
   say ""
