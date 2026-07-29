@@ -298,11 +298,19 @@ async function handleApi(req, res) {
       ? { host: s.btc_p2p_target_host, port: s.btc_p2p_target_port }
       : null;
 
+    // Bypass the detection cache. Right after a repair — the setup script
+    // opening the host firewall, say — the cached failure is a minute stale and
+    // reporting it would say the fix did not work. Opt-in only: the dashboard
+    // polls this every few seconds and must keep using the cache, and a sweep
+    // dials hosts, so it is rate-limited like the other probing endpoints.
+    const forceDetect = url.searchParams.get('force') === '1'
+      && !rateLimited('btc-status-force', 6);
+
     let detected = null;
     let detectError = null;
     let detecting = false;
     try {
-      const r = await bitcoinP2p.detectLocalNode({ override });
+      const r = await bitcoinP2p.detectLocalNode({ override, force: forceDetect });
       if (r.ok) {
         detected = { host: r.host, port: r.port, user_agent: r.user_agent,
                      protocol_version: r.protocol_version, start_height: r.start_height,

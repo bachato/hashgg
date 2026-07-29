@@ -928,7 +928,7 @@ verify_hashgg_to_bitcoin() {
     if offer_open_firewall; then
       local recheck
       sleep 3
-      recheck="$(curl -fsS --max-time 45 "http://127.0.0.1:$HASHGG_UI_PORT/api/btc/status" 2>/dev/null || true)"
+      recheck="$(curl -fsS --max-time 60 "http://127.0.0.1:$HASHGG_UI_PORT/api/btc/status?force=1" 2>/dev/null || true)"
       if [ -n "$recheck" ] \
          && [ "$(printf '%s' "$recheck" | jq -r 'if .detected then "yes" else "no" end' 2>/dev/null)" = "yes" ]; then
         BITCOIN_REACHABLE="yes"
