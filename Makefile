@@ -44,14 +44,19 @@ x86:
 	@rm -f docker-images/aarch64.tar
 	ARCH=x86_64 $(MAKE)
 
-docker-images/aarch64.tar: Dockerfile docker_entrypoint.sh check-tunnel.sh check-datum.sh $(APP_FILES) icon.png instructions.md
+# `manifest.yaml` is a prerequisite because `--tag` below embeds `$(PKG_VERSION)`,
+# which is read from it. Without it a version-only bump leaves these tarballs
+# looking up to date, and the pack fails with "Contains image with incorrect
+# version: expected 0.7.2.1 received 0.7.2.0", which reads as a packaging fault
+# rather than a stale build product.
+docker-images/aarch64.tar: Dockerfile docker_entrypoint.sh check-tunnel.sh check-datum.sh $(APP_FILES) icon.png instructions.md manifest.yaml
 ifeq ($(ARCH),x86_64)
 else
 	mkdir -p docker-images
 	docker buildx build --tag start9/$(PKG_ID)/main:$(PKG_VERSION) --build-arg ARCH=aarch64 --build-arg PLATFORM=arm64 --build-arg HASHGG_PLATFORM=startos-0.3 --platform=linux/arm64 -o type=docker,dest=docker-images/aarch64.tar .
 endif
 
-docker-images/x86_64.tar: Dockerfile docker_entrypoint.sh check-tunnel.sh check-datum.sh $(APP_FILES) icon.png instructions.md
+docker-images/x86_64.tar: Dockerfile docker_entrypoint.sh check-tunnel.sh check-datum.sh $(APP_FILES) icon.png instructions.md manifest.yaml
 ifeq ($(ARCH),aarch64)
 else
 	mkdir -p docker-images
