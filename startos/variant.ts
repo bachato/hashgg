@@ -15,12 +15,15 @@
  * point: a fix to the tunnel logic, the VPS flow or the UI lands once.
  */
 
+import { BUILD_VARIANT } from './variant.build'
+
 export type Variant = 'flagship' | 'companion'
 
+// Baked in by the build, not read from the environment. See variant.build.ts:
+// this module is evaluated both at pack time and on the StartOS host, and only
+// the first of those has an environment to read.
 export const VARIANT: Variant =
-  (process.env.HASHGG_VARIANT || '').trim().toLowerCase() === 'companion'
-    ? 'companion'
-    : 'flagship'
+  BUILD_VARIANT === 'companion' ? 'companion' : 'flagship'
 
 export const IS_COMPANION = VARIANT === 'companion'
 

@@ -49,3 +49,4 @@ Thumbs.db
 
 # --- Release build logs ---
 build-release*.log
+startos/variant.build.ts
