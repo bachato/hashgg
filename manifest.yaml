@@ -1,7 +1,7 @@
 id: hashgg
 title: "HashGG"
-version: 0.7.2.1
-release-notes: "Accepts the BLAKE2b build of Datum Gateway as the Datum it depends on. That build is packaged for StartOS 0.4.0 and cannot be installed on this version, so nothing here changes for you; this release exists so both versions of HashGG carry the same number. The fix itself is in the 0.4.0 package."
+version: 0.7.2.2
+release-notes: "Corrects how the Companion build describes itself. That build is packaged for StartOS 0.4.0 and cannot be installed on this version, so nothing here changes for you; this release exists so both versions of HashGG carry the same number."
 license: MIT
 wrapper-repo: "https://github.com/paulscode/hashgg"
 upstream-repo: "https://github.com/playit-cloud/playit-agent"
