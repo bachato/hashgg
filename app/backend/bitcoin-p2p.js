@@ -20,6 +20,7 @@
 
 const net = require('net');
 const crypto = require('crypto');
+const variant = require('./variant');
 
 const MAINNET_MAGIC = Buffer.from('f9beb4d9', 'hex');
 const PROTOCOL_VERSION = 70016;
@@ -48,6 +49,11 @@ const WHITEBIND_PORTS = new Set([
   9335,   // Umbrel  (APP_BITCOIN_KNOTS_P2P_WHITEBIND_PORT)
   58334,  // StartOS 0.4.0 (peerPortLocal)
 ]);
+// Every whitebind port this build's own node targets use. Without this the
+// companion's nodes would not be on the list at all: it was written when only
+// `bitcoind` could be targeted, and knots-blake2b whitebinds on 18445, which
+// appears nowhere above.
+for (const p of variant.whitebindPorts()) WHITEBIND_PORTS.add(p);
 // Prefer the platform's own declared value when we have it.
 if (process.env.BITCOIN_P2P_WHITEBIND_PORT) {
   const p = parseInt(process.env.BITCOIN_P2P_WHITEBIND_PORT, 10);
@@ -242,6 +248,15 @@ function candidateTargets(override) {
   push('10.21.21.7', 9333, 'umbrel default');       // Umbrel bitcoin-knots
   push('bitcoind.embassy', 8333, 'startos 0.3.5.1');
   push('bitcoind.startos', 58333, 'startos 0.4.0'); // plain bind, NOT 58334
+  // The companion build's nodes. Empty for the flagship, so this costs nothing
+  // there. Both are PLAIN bind ports: knots-blake2b whitebinds on 18445 and
+  // knots-prerdts on 58334, and forwarding either to the internet would grant
+  // anonymous peers the noban and download permissions those listeners exist to
+  // give trusted local services.
+  for (const n of variant.NODE_TARGETS) {
+    if (n.id === 'bitcoind') continue; // already covered above
+    push(`${n.id}.startos`, n.peerInternalPort, `startos 0.4.0 (${n.id})`);
+  }
   // A node on the Docker host, which is the ordinary plain-Docker arrangement
   // (Bitcoin on the desktop, HashGG in a container). Resolves only when the
   // container was started with host-gateway mapped, so it costs nothing

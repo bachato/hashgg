@@ -1,9 +1,10 @@
 import { setupManifest } from '@start9labs/start-sdk'
 import { short, long, datumDescription } from './i18n'
+import { PACKAGE, DATUM } from '../variant'
 
 export const manifest = setupManifest({
-  id: 'hashgg',
-  title: 'HashGG',
+  id: PACKAGE.id,
+  title: PACKAGE.title,
   license: 'mit',
   packageRepo: 'https://github.com/paulscode/hashgg',
   upstreamRepo: 'https://github.com/playit-cloud/playit-agent',
@@ -32,11 +33,11 @@ export const manifest = setupManifest({
     stop: null,
   },
   dependencies: {
-    datum: {
+    [DATUM.id]: {
       description: datumDescription,
       optional: false,
       metadata: {
-        title: 'Datum Gateway',
+        title: DATUM.title,
         icon: 'https://raw.githubusercontent.com/Start9Labs/datum-gateway-startos/next/icon.svg',
       },
     },

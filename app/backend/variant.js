@@ -59,11 +59,13 @@ const NODE_TARGETS = IS_COMPANION
       {
         id: 'knots-blake2b',
         peerInternalPort: 18444,
+        whitebindPort: 18445,
         title: 'Bitcoin Knots (BLAKE2b) Companion',
       },
       {
         id: 'knots-prerdts',
         peerInternalPort: 58333,
+        whitebindPort: 58334,
         title: 'Bitcoin Knots (pre-RDTS)',
       },
     ]
@@ -71,6 +73,7 @@ const NODE_TARGETS = IS_COMPANION
       {
         id: 'bitcoind',
         peerInternalPort: 58333,
+        whitebindPort: 58334,
         title: 'Bitcoin',
       },
     ];
@@ -84,6 +87,20 @@ const NODE_TARGETS = IS_COMPANION
 const IDENTITY = IS_COMPANION
   ? { agentLabel: 'HashGG Companion', sshKeyComment: 'hashgg-companion@hashgg' }
   : { agentLabel: 'HashGG', sshKeyComment: 'hashgg@hashgg' };
+
+/**
+ * The whitebind port of every node this build can target.
+ *
+ * Feeds the refusal list in bitcoin-p2p.js. That listener grants noban and
+ * download to whatever connects, which is correct for a trusted local service and
+ * catastrophic to expose: forwarding it hands those permissions to every
+ * anonymous peer on the internet. The list only ever had the flagship's ports, so
+ * adding a node without adding its whitebind port here would leave the companion's
+ * manual-override path unguarded.
+ */
+function whitebindPorts() {
+  return NODE_TARGETS.map((n) => n.whitebindPort).filter(Boolean)
+}
 
 /** Every tunnel name this build owns, for cleanup's "is this one of mine" test. */
 function ownTunnelNames() {
@@ -103,4 +120,5 @@ module.exports = {
   IDENTITY,
   ownTunnelNames,
   nodeTarget,
+  whitebindPorts,
 };
