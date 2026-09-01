@@ -21,6 +21,8 @@
 // interpolated into a command — it goes into a quoted heredoc, which disables
 // every form of expansion, and reaches start-cli via a file.
 
+const variant = require('./variant');
+
 const HEREDOC_DELIMITER = 'HASHGG_WG_CONFIG_EOF';
 const MAX_CONFIG_BYTES = 4096;
 
@@ -237,7 +239,13 @@ bash /root/hashgg-starttunnel.sh
  * and the interface name when the gateway is created, so the selection has to
  * happen on the StartOS host, after the fact.
  */
-function buildBlockB(config, vpsHost, peerInternalPort = 58333) {
+function buildBlockB(config, vpsHost, node = variant.NODE_TARGETS[0]) {
+  // Id and port travel together and are not defaulted separately: the peer
+  // binding is registered under a different internal port in each package
+  // (bitcoind and knots-prerdts use 58333, knots-blake2b uses 18444), so a
+  // correct id with a stale port silently addresses nothing.
+  const nodeId = node.id;
+  const peerInternalPort = node.peerInternalPort;
   return `# HashGG — StartOS setup. Paste this into a terminal on your StartOS server
 # (ssh start9@<your-server>.local).
 
@@ -269,7 +277,7 @@ sleep 5
 # The address object has to be read back rather than constructed: StartOS
 # assigns the external port and names the interface when the gateway is added,
 # so neither value is known before this point.
-ADDR=$(start-cli package host bitcoind binding peer list --format json | python3 -c '
+ADDR=$(start-cli package host ${nodeId} binding peer list --format json | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
 b = d.get("${peerInternalPort}") or {}
@@ -282,7 +290,7 @@ for a in b.get("addresses", {}).get("available", []):
 if [ -z "$ADDR" ]; then
   echo "!! Could not find the tunnel address. Is the gateway connected?"
 else
-  start-cli package host bitcoind binding peer set-address-enabled --address "$ADDR" --enabled true ${peerInternalPort}
+  start-cli package host ${nodeId} binding peer set-address-enabled --address "$ADDR" --enabled true ${peerInternalPort}
   VERIFY_LINE="HASHGG_VERIFY $(printf '%s' "$ADDR" | python3 -c 'import json,sys; a=json.load(sys.stdin); print(str(a["hostname"]) + ":" + str(a["port"]))')"
   clear 2>/dev/null || printf '\\033[2J\\033[H'
   echo ""
@@ -312,7 +320,8 @@ fi
  * stops mining. So the script does the checking, retries, and says one thing at
  * the end.
  */
-function buildReplaceBlock() {
+function buildReplaceBlock(node = variant.NODE_TARGETS[0]) {
+  const nodeId = node.id;
   return `# HashGG — disconnect your current VPS. Paste into a terminal on StartOS.
 
 python3 - <<'HASHGG_REPLACE_EOF'
@@ -342,7 +351,7 @@ if not found:
 # Switch the public address off first. That is what makes StartOS stop telling
 # the node to advertise it and drop the port forward; removing the tunnel alone
 # would leave the node announcing an address that is about to stop working.
-code, out, _ = run(["package", "host", "bitcoind", "binding", "peer", "list", "--format", "json"])
+code, out, _ = run(["package", "host", "${nodeId}", "binding", "peer", "list", "--format", "json"])
 if code == 0:
     try:
         bindings = json.loads(out)
@@ -354,7 +363,7 @@ if code == 0:
                 gw = (cand.get("metadata") or {}).get("gateway") or ""
                 same = cand.get("hostname") == (a if isinstance(a, str) else a.get("hostname"))
                 if gw.startswith("wg") and (same or str(a).startswith(str(cand.get("hostname")))):
-                    run(["package", "host", "bitcoind", "binding", "peer",
+                    run(["package", "host", "${nodeId}", "binding", "peer",
                          "set-address-enabled", "--address", json.dumps(cand),
                          "--enabled", "false", str(port)])
     time.sleep(3)

@@ -2,6 +2,7 @@
 
 const https = require('https');
 const state = require('./state');
+const variant = require('./variant');
 const playitCleanup = require('./playit-cleanup');
 
 const API_BASE = 'https://api.playit.gg';
@@ -184,16 +185,16 @@ async function fetchTunnelStatus() {
 
     // The agent may serve several tunnels (primary + additional miners). Select the
     // PRIMARY one deliberately — never an extra — so the primary endpoint/health is
-    // tracked correctly. Prefer the remembered id, then a non-extra 'hashgg-stratum',
+    // tracked correctly. Prefer the remembered id, then a non-extra primary by name,
     // then any non-extra tunnel.
     // Exclude additional-miner tunnels both by recorded id and by name — the name
     // backstop covers the brief window after an extra is created on the account but
     // before its id is saved to state.extra_connections.
     const extraIds = new Set((s.extra_connections || []).map((c) => c.tunnel_id).filter(Boolean));
-    const nonExtra = allTunnels.filter((t) => !extraIds.has(t.id) && t.name !== 'hashgg-extra');
+    const nonExtra = allTunnels.filter((t) => !extraIds.has(t.id) && t.name !== variant.TUNNEL_NAMES.extra);
     const tunnel =
       nonExtra.find((t) => t.id === s.tunnel_id) ||
-      nonExtra.find((t) => t.name === 'hashgg-stratum') ||
+      nonExtra.find((t) => t.name === variant.TUNNEL_NAMES.primary) ||
       nonExtra[0] ||
       null;
 
@@ -252,7 +253,7 @@ async function fetchTunnelStatus() {
 }
 
 // Create a playit tunnel. opts:
-//   name    — tunnel name (default 'hashgg-stratum' for the primary)
+//   name    — tunnel name (defaults to this build's primary; see variant.js)
 //   localIp — where playitd forwards (default '127.0.0.1' → our socat)
 //   isExtra — true for additional-miner tunnels; keeps the primary create-retry
 //             counters untouched so an extra never disturbs primary provisioning.
@@ -264,7 +265,7 @@ async function createTunnel(localPort, agentId, opts = {}) {
     return null;
   }
 
-  const name = opts.name || 'hashgg-stratum';
+  const name = opts.name || variant.TUNNEL_NAMES.primary;
   const localIp = opts.localIp || '127.0.0.1';
   const isExtra = !!opts.isExtra;
 

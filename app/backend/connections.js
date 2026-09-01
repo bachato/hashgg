@@ -21,8 +21,9 @@ const { spawn } = require('child_process');
 const state = require('./state');
 const tunnelStatus = require('./tunnel-status');
 const vpsManager = require('./vps-manager');
+const variant = require('./variant');
 
-const EXTRA_TUNNEL_NAME = 'hashgg-extra';
+const EXTRA_TUNNEL_NAME = variant.TUNNEL_NAMES.extra;
 const POLL_INTERVAL = 15000;
 const PROBE_TIMEOUT = 5000;
 const SOCAT_BASE_PORT = 24000; // local loopback ports for extra-connection bridges
