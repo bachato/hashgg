@@ -135,11 +135,18 @@ release-all: verify javascript/index.js
 # The companion package: same sources, same image, different manifest and icon.
 # Forces a rebuild of the generated variant and the bundle, because the previous
 # target left them set to whatever it built.
-companion-040:
+# Instructions are the shared file with a companion preamble on the front, rather
+# than a second copy. The mechanics (playit, VPS, dashboard, miners) are identical
+# and a fork of 157 lines would drift the first time either is edited.
+instructions-companion.md: instructions-companion-preamble.md instructions.md
+	cat $^ > $@
+
+companion-040: instructions-companion.md
 	$(MAKE) VARIANT=companion javascript/index.js
 	HASHGG_VARIANT=companion start-cli s9pk pack \
 	  -o $(BUILD_DIR)/hashgg-companion-040.s9pk \
-	  --icon icon-companion.png
+	  --icon icon-companion.png \
+	  --instructions instructions-companion.md
 	@echo "  built $(BUILD_DIR)/hashgg-companion-040.s9pk"
 
 clean-040:
