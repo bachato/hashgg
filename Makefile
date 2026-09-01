@@ -1,6 +1,14 @@
 PKG_ID := $(shell yq -e ".id" manifest.yaml)
 PKG_VERSION := $(shell yq -e ".version" manifest.yaml)
 BUILD_DIR := builds/$(PKG_VERSION)
+# The companion gets its own tree, and it is not tidiness. start9-store's
+# publish.sh takes EVERY *-040.s9pk in the newest version dir, and when it finds
+# more than one it assumes they are per-architecture builds of one package and
+# derives the arch from <id>_<arch>-040.s9pk. A companion s9pk sitting beside the
+# flagship hits that branch and dies with "cannot tell architectures apart",
+# because there is no underscore to split on. Separate dirs also mean `make bump`
+# can publish and prune the two independently, which is what it is for.
+COMPANION_BUILD_DIR := builds-companion/$(PKG_VERSION)
 TS_FILES := $(shell find . -name \*.ts -not -path './startos/*' -not -path './node_modules/*' )
 # All backend/frontend sources baked into the image. Listed explicitly so `make`
 # rebuilds when any of them change (the Dockerfile ADDs the whole dirs, but make
@@ -142,12 +150,27 @@ instructions-companion.md: instructions-companion-preamble.md instructions.md
 	cat $^ > $@
 
 companion-040: instructions-companion.md
+	rm -rf $(COMPANION_BUILD_DIR)
+	mkdir -p $(COMPANION_BUILD_DIR)
 	$(MAKE) VARIANT=companion javascript/index.js
 	HASHGG_VARIANT=companion start-cli s9pk pack \
-	  -o $(BUILD_DIR)/hashgg-companion-040.s9pk \
+	  -o $(COMPANION_BUILD_DIR)/hashgg-companion-040.s9pk \
 	  --icon icon-companion.png \
 	  --instructions instructions-companion.md
-	@echo "  built $(BUILD_DIR)/hashgg-companion-040.s9pk"
+	cd $(COMPANION_BUILD_DIR) && sha256sum *.s9pk > SHA256SUMS
+	@echo ""
+	@echo "Companion build:"
+	@ls -lh $(COMPANION_BUILD_DIR)/
+	@echo ""
+	@cat $(COMPANION_BUILD_DIR)/SHA256SUMS
+	@echo ""
+	@echo "Sign SHA256SUMS on the air-gapped machine and drop SHA256SUMS.asc beside it."
+	@echo "This is a SEPARATE release from the flagship: its own tag and its own"
+	@echo "signature, because its artifacts live in their own directory and a"
+	@echo "SHA256SUMS can only be checked against files sitting next to it."
+	# Leave the bundle as the flagship, so a later `make release-all` cannot pack
+	# the flagship package with the companion's identity baked in.
+	$(MAKE) VARIANT=flagship javascript/index.js >/dev/null
 
 clean-040:
 	rm -f $(PKG_ID)_x86_64.s9pk $(PKG_ID)_aarch64.s9pk
