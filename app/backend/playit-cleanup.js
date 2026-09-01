@@ -16,11 +16,15 @@
 const https = require('https');
 const os = require('os');
 const state = require('./state');
+const variant = require('./variant');
 
 const API_BASE = 'https://api.playit.gg';
 // Names HashGG gives its tunnels: the primary Datum tunnel and additional-miner
 // tunnels. Orphans of either kind (from old installs) are cleanup candidates.
-const HASHGG_TUNNEL_NAMES = new Set(['hashgg-stratum', 'hashgg-extra']);
+// This build's own tunnel names. Distinct per variant, because this list is
+// exactly what separates "an orphan from an old install" from "the other
+// installation's live tunnel". See app/backend/variant.js.
+const HASHGG_TUNNEL_NAMES = variant.ownTunnelNames();
 const ACCOUNT_AGENTS_URL = 'https://playit.gg/account/agents';
 
 function apiRequest(method, path, secret, body) {
