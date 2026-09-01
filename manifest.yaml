@@ -1,11 +1,7 @@
 id: hashgg
 title: "HashGG"
-version: 0.7.2.0
-release-notes: "Sharing one server between two HashGG installations is now safe. Setting up a second machine against a server another was already using would quietly replace the first one's access, and mining on that machine stopped at its next reconnect — hours later, with nothing to connect the two events. Each installation now keeps its own access, and removing one leaves the others working.
-
-If a port is already taken on your server, HashGG now says so plainly and offers you a free one instead of failing with a message from ssh. The setup script also warns you before you get that far.
-
-This version also adds a section for making your Bitcoin node reachable from the internet. It cannot work on this version of StartOS — the bundled Bitcoin package rewrites its configuration on every start and only ever advertises its Tor address — so HashGG now explains that where you would look for it, rather than leaving it out with no reason given. StartOS 0.4.0 supports it fully. Mining is unaffected either way."
+version: 0.7.2.1
+release-notes: "Accepts the BLAKE2b build of Datum Gateway as the Datum it depends on. That build is packaged for StartOS 0.4.0 and cannot be installed on this version, so nothing here changes for you; this release exists so both versions of HashGG carry the same number. The fix itself is in the 0.4.0 package."
 license: MIT
 wrapper-repo: "https://github.com/paulscode/hashgg"
 upstream-repo: "https://github.com/playit-cloud/playit-agent"
