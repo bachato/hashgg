@@ -12,7 +12,7 @@ import { IS_COMPANION } from '../variant'
 export const short = IS_COMPANION
   ? {
       en_US:
-        'Expose the BLAKE2b Datum Gateway to the internet, alongside HashGG',
+        'Expose the Companion Datum Gateway to the internet, alongside HashGG',
     }
   : {
       en_US: 'Expose Datum Gateway to the internet via playit.gg',
@@ -22,6 +22,7 @@ export const long = IS_COMPANION
   ? {
       en_US:
         'HashGG Companion connects the stratum port of Datum Gateway (BLAKE2b) Companion to the public internet through playit.gg tunneling. No port forwarding or static IP required. Miners anywhere can connect using the public endpoint shown in the dashboard.\n\n' +
+        'The difference from the ordinary HashGG is which gateway it pairs with, not which chain it is for. HashGG pairs with whichever app holds the Datum Gateway slot, whatever chain that build follows. This one pairs with the separate Companion package, which exists so a second gateway can run beside the first.\n\n' +
         'It installs and runs beside the ordinary HashGG rather than replacing it, so one server can expose both gateways at once. The two keep separate settings, separate tunnels and separate access to any VPS they share.\n\n' +
         'It can also make a companion Bitcoin node reachable from the internet, either the BLAKE2b node or the pre-RDTS one, whichever you have running. The ordinary HashGG does that for the main Bitcoin package, and this one deliberately never touches it.',
     }

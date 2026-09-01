@@ -1,10 +1,12 @@
 # HashGG Companion
 
-This is HashGG, pointed at the BLAKE2b side of your setup. Everything below the next heading is the ordinary HashGG guide and applies unchanged; this section is the only part that differs.
+This is HashGG, paired with the Companion Datum Gateway instead of the ordinary one. Everything below the next heading is the ordinary HashGG guide and applies unchanged; this section is the only part that differs.
 
 ## What is different
 
 It pairs with **Datum Gateway (BLAKE2b) Companion**, not the ordinary Datum Gateway. That is the only gateway it will connect to, and it is listed as a requirement, so StartOS will tell you if it is missing.
+
+The difference is which gateway, not which chain. The ordinary HashGG pairs with whichever app holds the Datum Gateway slot, whatever chain that build follows, so it is not limited to one chain either. This one exists because a second gateway needs a second HashGG to expose it.
 
 It **installs beside the ordinary HashGG** rather than replacing it. Both can run at once, each exposing its own gateway. They keep separate settings, separate playit.gg tunnels, and separate access to any VPS they share, so setting one up never disturbs the other. If you run both, the tile with **COMPANION** across the bottom of the icon is this one.
 
